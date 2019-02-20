@@ -92,8 +92,8 @@ class workflow_tools:
         # construct desired table
         session = self.session
         query = session.query(func.sum(Obs.datum*0.1/yr_interval).label("sum"), 
-                              func.max(Obs.time).label("max_date"), 
                               func.min(Obs.time).label("min_date"),
+                              func.max(Obs.time).label("max_date"), 
                               History.lat, History.lon, 
                               History.station_id)
 
