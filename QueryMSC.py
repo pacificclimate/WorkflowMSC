@@ -11,7 +11,7 @@ import pgpasslib
 
 from pycds import *
 
-class WorkflowMSC:
+class workflow_tools:
     """The work flow tool helps query the Meteorlogical 
     Services Canada database at PCIC using ORM to return
     design values used in the national building code project.
@@ -71,7 +71,7 @@ class WorkflowMSC:
     def annual_rain(self):
         """A query to get the total annual average rainfall amount 
         at a given station over a range of years. The table contains
-        the average total rainfall in mm, the maximum time used to
+        the average total rainfall in mm, the maximum and minimum time used to
         calculate the average from the station, the latitude, longitude
         and the station id.  
         -----------------------------------------
@@ -91,27 +91,25 @@ class WorkflowMSC:
         session = self.session
         query = session.query(func.sum(Obs.datum*0.1/yr_interval).label("sum"), 
                               func.max(Obs.time).label("max_date"), 
+                              func.min(Obs.time).label("min_date"),
                               History.lat, History.lon, 
                               History.station_id)
 
         # filter results to annual rain in given time range
         # select stations that have a max observed time that is
         # at least the ending time requested.
-        query = query.group_by(History) \
+        query = query.group_by(History.lat, History.lon, History.station_id) \
                      .having(func.max(Obs.time)>=self.end_time) \
-                     .filter(Variable.standard_name=="lwe_thickness_of_precipitation_amount") \
-                     .filter(or_(Variable.description=="Total precipiation", Variable.id==1397)) \
                      .filter(Obs.time<=self.end_time) \
                      .filter(Obs.time>=self.start_time) \
+                     .filter(Variable.id==1397) \
                      .join(History).join(Variable)
-
         return query
     
     def design_temp_25(self):
         """A query to get the 2.5th percentile of a given month across
         the entire operating history of a station in a range of time. 
-        Only the year from start and end times are used to create the
-        time frame. All frequencies of observations are used, and the
+        All frequencies of observations are used, and the
         regular non-corrected air temperature is being used for this 
         calculation.
         -----------------------------------------
@@ -119,10 +117,6 @@ class WorkflowMSC:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
-        if (self.month>12) or (self.month<1) :
-            raise ValueError("Invalid month specified.")
-            return None
-
         # construct query table
         session = self.session
         query = session.query(func.percentile_cont(0.025) \
@@ -131,12 +125,11 @@ class WorkflowMSC:
                                             func.max(Obs.time).label("time_max"),
                                             History.lat,
                                             History.lon,
-                                            History.station_id,
-                                            History.station_name)
+                                            History.station_id)
         # filter query
-        query = query.group_by(History) \
-                     .filter(and_(Variable.standard_name=='air_temperature',
-                                  Variable.id==1510)) \
+        query = query.group_by(History.lat, History.lon, History.station_id) \
+                     .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
+                     .filter(Variable.id == 1510) \
                      .filter(func.extract("month", Obs.time)==self.month) \
                      .join(History)
 
@@ -154,9 +147,6 @@ class WorkflowMSC:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
-        if (month>12) or (month<1) :
-            raise ValueError("Invalid month specified.")
-            return None
         # construct query table
         session = self.session
         query = session.query(func.percentile_cont(0.01) \
@@ -165,13 +155,12 @@ class WorkflowMSC:
                                             func.max(Obs.time).label("time_max"),
                                             History.lat,
                                             History.lon,
-                                            History.station_id,
-                                            History.station_name)
+                                            History.station_id)
         # filter query
-        query = query.group_by(History) \
-                     .filter(and_(Variable.standard_name=='air_temperature',
-                                  Variable.id==1510)) \
-                     .filter(func.extract("month", Obs.time)==1) \
+        query = query.group_by(History.lat, History.lon, History.station_id) \
+                     .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
+                     .filter(Variable.id == 1510) \
+                     .filter(func.extract("month", Obs.time)==self.month) \
                      .join(History)
 
         return query
@@ -185,9 +174,9 @@ class WorkflowMSC:
                 using ORM to query variables
         """
         session = self.session
-        query = session.query(Variable.standard_name,
+        query = session.query(Variable.id,
+                              Variable.standard_name,
                               Variable.description,
-                              Variable.unit,
-                              Variable.id)
+                              Variable.unit)
 
         return query
