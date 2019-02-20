@@ -52,6 +52,7 @@ class workflow_tools:
                               .filter(Obs.time<=self.end_time) \
                               .filter(Obs.time>=self.start_time) \
                               .join(History).join(Variable)
+
         return query
 
     def precip_query(self):
@@ -66,6 +67,7 @@ class workflow_tools:
         query = self.baseline().filter(Variable.standard_name=="lwe_thickness_of_precipitation_amount") \
                                .filter(or_(Variable.description=="Total precipiation", 
                                            Variable.id==1397))
+
         return query
 
     def annual_rain(self):
@@ -103,6 +105,7 @@ class workflow_tools:
                      .filter(and_(Obs.time<=self.end_time, Obs.time>=self.start_time)) \
                      .filter(Variable.id==1397) \
                      .join(History).join(Variable)
+
         return query
     
     def design_temp_25(self):
@@ -164,6 +167,70 @@ class workflow_tools:
                      .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
                      .filter(func.extract("month", Obs.time)==self.month) \
                      .filter(Variable.id == 1510) \
+                     .join(History)
+
+        return query
+
+    def design_temp_25_dry(self):
+        """A query to get the 1st percentile of a given month across
+        the entire operating history of a station in a range of time. 
+        Only the year from start and end times are used to create the
+        time frame. All frequencies of observations are used, and the
+        regular non-corrected air temperature is being used for this 
+        calculation.
+        -----------------------------------------
+        Returns: 
+            query (sqlalchemy query): sqlalchemy query constructed 
+                using ORM to query temperature percentiles 
+        """
+
+        # construct query table
+        session = self.session
+        query = session.query(func.percentile_cont(0.025) \
+                              .within_group(Obs.datum.desc()).label("dry_temp"),
+                                            func.min(Obs.time).label("time_min"),
+                                            func.max(Obs.time).label("time_max"),
+                                            History.lat,
+                                            History.lon,
+                                            History.station_id)
+
+        # filter query
+        query = query.group_by(History.lat, History.lon, History.station_id) \
+                     .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
+                     .filter(func.extract("month", Obs.time)==self.month) \
+                     .filter(Variable.id == 1299) \
+                     .join(History)
+
+        return query
+
+    def design_temp_25_wet(self):
+        """A query to get the 1st percentile of a given month across
+        the entire operating history of a station in a range of time. 
+        Only the year from start and end times are used to create the
+        time frame. All frequencies of observations are used, and the
+        regular non-corrected air temperature is being used for this 
+        calculation.
+        -----------------------------------------
+        Returns: 
+            query (sqlalchemy query): sqlalchemy query constructed 
+                using ORM to query temperature percentiles 
+        """
+
+        # construct query table
+        session = self.session
+        query = session.query(func.percentile_cont(0.025) \
+                              .within_group(Obs.datum.desc()).label("wet_temp"),
+                                            func.min(Obs.time).label("time_min"),
+                                            func.max(Obs.time).label("time_max"),
+                                            History.lat,
+                                            History.lon,
+                                            History.station_id)
+
+        # filter query
+        query = query.group_by(History.lat, History.lon, History.station_id) \
+                     .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
+                     .filter(func.extract("month", Obs.time)==self.month) \
+                     .filter(Variable.id == 1300) \
                      .join(History)
 
         return query
