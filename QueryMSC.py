@@ -100,8 +100,7 @@ class workflow_tools:
         # at least the ending time requested.
         query = query.group_by(History.lat, History.lon, History.station_id) \
                      .having(func.max(Obs.time)>=self.end_time) \
-                     .filter(Obs.time<=self.end_time) \
-                     .filter(Obs.time>=self.start_time) \
+                     .filter(and_(Obs.time<=self.end_time, Obs.time>=self.start_time)) \
                      .filter(Variable.id==1397) \
                      .join(History).join(Variable)
         return query
@@ -117,6 +116,7 @@ class workflow_tools:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
+
         # construct query table
         session = self.session
         query = session.query(func.percentile_cont(0.025) \
@@ -126,11 +126,12 @@ class workflow_tools:
                                             History.lat,
                                             History.lon,
                                             History.station_id)
+
         # filter query
         query = query.group_by(History.lat, History.lon, History.station_id) \
                      .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
-                     .filter(Variable.id == 1510) \
                      .filter(func.extract("month", Obs.time)==self.month) \
+                     .filter(Variable.id == 1510) \
                      .join(History)
 
         return query
@@ -147,6 +148,7 @@ class workflow_tools:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
+
         # construct query table
         session = self.session
         query = session.query(func.percentile_cont(0.01) \
@@ -156,11 +158,12 @@ class workflow_tools:
                                             History.lat,
                                             History.lon,
                                             History.station_id)
+
         # filter query
         query = query.group_by(History.lat, History.lon, History.station_id) \
                      .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
-                     .filter(Variable.id == 1510) \
                      .filter(func.extract("month", Obs.time)==self.month) \
+                     .filter(Variable.id == 1510) \
                      .join(History)
 
         return query
@@ -173,6 +176,7 @@ class workflow_tools:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query variables
         """
+
         session = self.session
         query = session.query(Variable.id,
                               Variable.standard_name,
