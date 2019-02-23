@@ -131,12 +131,13 @@ class workflow_tools:
                                             History.station_id)
 
         # filter query
-        query = query.group_by(History.lat, History.lon, History.station_id) \
+        query = query.group_by(History.lat, History.lon, History.id) \                              .having(and_(func.max(Obs.time)>=end_time, func.min(Obs.time)<=start_time)) \
                      .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
-                     .filter(func.extract("month", Obs.time)==self.month) \
-                     .filter(Variable.id == 1510) \
-                     .join(History)
-
+                     .filter(func.extract("month", Obs.time)==month) \
+                     .filter(and_(Variable.standard_name == 'air_temperature',
+                                  Variable.id == 1510)) \
+                     .filter(Obs.datum!=0.0) \
+                     .join(History) # join History to query
         return query
 
     def design_temp_1(self):
