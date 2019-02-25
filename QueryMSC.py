@@ -240,7 +240,7 @@ class workflow_tools:
         query = query.group_by(History.lat, History.lon, History.station_id) \
                      .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
                      .filter(func.extract("month", Obs.time)==self.month) \
-                     .filter(Variable.id == 1300) \
+                     .filter(Variable.id==1300) \
                      .join(History)
 
         return query
@@ -261,3 +261,38 @@ class workflow_tools:
                               Variable.unit)
 
         return query
+
+    def deg_day_below_18_query(self):
+        """A query to get the heating degree days (hdd) 
+        "Degree Days Below 18C". If start/end time
+        range is longer than a year, then the average
+        degree day across the annual range is used.
+        Each comparison is made between 18C and a 
+        daily mean temperature.
+        -----------------------------------------
+        Returns: 
+            query (sqlalchemy query): sqlalchemy query object
+            containing hdd values   
+        """
+
+        yr_interval = float(np.abs(self.end_time.year
+                            -self.start_time.year))
+
+        query = session.query(func.sum((18.0-Obs.datum*0.1)/yr_interval).label("hdd"),
+                              func.min(Obs.time).label("min_date"),
+                              func.max(Obs.time).label("max_date"),
+                              func.sum(func.extract("day", Obs.time)),
+                              History.lat, History.lon,
+                              History.station_id)
+
+        query = query.group_by(History.lat, History.lon, History.station_id) \
+                     .filter((180.0 - Obs.datum) > 0.0) \
+                     .filter(and_(Obs.time <= end_time, Obs.time >= start_time)) \
+                     .having((func.extract("year", func.max(Obs.time))
+                              - func.extract("year", func.min(Obs.time))) >= yr_interval) \
+                     .filter(and_(Variable.standard_name == 'air_temperature',
+                                  Variable.id == 1394)) \
+                     .join(History).join(Variable)
+
+        return query
+
