@@ -11,7 +11,7 @@ import pgpasslib
 
 from pycds import *
 
-class WorkflowTools:
+class workflow_tools:
     """The work flow tool helps query the Meteorlogical 
     Services Canada database at PCIC using ORM to return
     design values used in the national building code project.
@@ -271,7 +271,6 @@ class WorkflowTools:
         query = session.query(func.sum((18.0-Obs.datum*0.1)/yr_interval).label("hdd"),
                               func.min(Obs.time).label("min_date"),
                               func.max(Obs.time).label("max_date"),
-                              func.sum(func.extract("day", Obs.time)),
                               History.lat, History.lon,
                               History.station_id)
 
