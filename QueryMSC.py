@@ -129,28 +129,24 @@ class workflow_tools:
 
             # construct query table
             session = self.session
-            query = session.query(func.percentile_cont(0.025)
+            query = session.query(func.percentile_cont(0.025) \
                                   .within_group(Obs.datum.asc()).label("temp"),
-                                  func.min(Obs.time).label("time_min"),
-                                  func.max(Obs.time).label("time_max"),
-                                  History.lat,
-                                  History.lon,
-                                  History.elevation,
-                                  History.id,
-                                  )
+                                                func.min(Obs.time).label("time_min"),
+                                                func.max(Obs.time).label("time_max"),
+                                                History.lat,
+                                                History.lon,
+                                                History.station_id)
 
             # filter query
             query = query.group_by(History.lat, History.lon, History.id) \
-                .filter(and_(Obs.time >= self.start_time,
-                             Obs.time <= self.end_time)) \
-                .filter(func.extract("month", Obs.time) == self.month) \
-                .filter(and_(Variable.standard_name == 'air_temperature',
-                             Variable.id == 1510)) \
-                .filter(Obs.datum != 0.0) \
-                .join(History)
-
+                         .having(and_(func.max(Obs.time)>=end_time, func.min(Obs.time)<=start_time)) \
+                         .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
+                         .filter(func.extract("month", Obs.time)==month) \
+                         .filter(and_(Variable.standard_name == 'air_temperature',
+                                      Variable.id == 1510)) \
+                         .filter(Obs.datum!=0.0) \
+                         .join(History) # join History to query
             return query
-
 
     def design_temp_1(self):
         """A query to get the 1st percentile of a given month across
