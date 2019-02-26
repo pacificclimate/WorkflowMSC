@@ -11,7 +11,7 @@ import pgpasslib
 
 from pycds import *
 
-class workflow_tools:
+class WorkflowTools:
     """The work flow tool helps query the Meteorlogical 
     Services Canada database at PCIC using ORM to return
     design values used in the national building code project.
