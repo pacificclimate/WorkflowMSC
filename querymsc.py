@@ -197,17 +197,17 @@ class WorkflowTools:
 
         # construct query table
         query = (
-                    session.query(
-                                    (func.percentile_cont(0.01)
-                                            .within_group(Obs.datum.asc())
-                                            .label("temp")),
-                                    func.min(Obs.time).label("time_min"),
-                                    func.max(Obs.time).label("time_max"),
-                                    History.lat,
-                                    History.lon,
-                                    History.station_id)
-                            .join(History)
-                            .join(Variable)
+                session.query(
+                                (func.percentile_cont(0.01)
+                                     .within_group(Obs.datum.asc())
+                                     .label("temp")),
+                                 func.min(Obs.time).label("time_min"),
+                                 func.max(Obs.time).label("time_max"),
+                                 History.lat,
+                                 History.lon,
+                                 History.station_id)
+                            # select from and make join explicit
+                            .select_from([History, Variable])
                             .filter(
                                     and_(Obs.time >= self.start_time,
                                          Obs.time <= self.end_time)
