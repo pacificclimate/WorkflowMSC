@@ -101,7 +101,8 @@ class WorkflowTools:
         # select stations that have a max observed time that is
         # at least the ending time requested.
         query = query.group_by(History.lat, History.lon, History.station_id) \
-                     .having(func.max(Obs.time) >= self.end_time) \
+                     .having(and_(func.max(Obs.time) >= self.end_time, 
+                     				func.min(Obs.time) <= self.start_time)) \
                      .filter(and_(Obs.time <= self.end_time,
                                   Obs.time >= self.start_time)) \
                      .filter(or_(Variable.id == 1395, Variable.id == 1452)) \
@@ -139,7 +140,8 @@ class WorkflowTools:
         # select stations that have a max observed time that is
         # at least the ending time requested.
         query = query.group_by(History.lat, History.lon, History.station_id) \
-                     .having(func.max(Obs.time) >= self.end_time) \
+                     .having(and_(func.max(Obs.time) >= self.end_time, 
+                     				func.min(Obs.time) <= self.start_time)) \
                      .filter(and_(Obs.time <= self.end_time,
                                   Obs.time >= self.start_time)) \
                      .filter(Variable.id == 1397) \
