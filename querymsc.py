@@ -223,7 +223,7 @@ class WorkflowTools:
                                       History.lon, 
                                       History.station_id)
                 )
-
+  
         return query
 
     def query_design_temp_25_dry(self, session):
