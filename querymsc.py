@@ -196,33 +196,24 @@ class WorkflowTools:
         """
 
         # construct query table
-        query = (
-        			session.query(
-        						    (func.percentile_cont(0.01)
-        									.within_group(Obs.datum.asc())
-        									.label("temp")),
-        	                        func.min(Obs.time).label("time_min"),
-		                            func.max(Obs.time).label("time_max"),
-        	                        History.lat,
-            	                    History.lon,
-                	                History.station_id)
-        					.join(History)
-        					.join(Variable)
-	                        .filter(
-	                        		and_(Obs.time >= self.start_time,
-	                        			 Obs.time <= self.end_time)
-	                        		)
-       		                .filter(
-       		                		func.extract("month", Obs.time) == self.month
-       		                		)
-              		        .filter(
-              		        		and_(Variable.standard_name == 'air_temperature',
-                                 		 Variable.id == 1510)
-              		        		)
-							.group_by(History.lat, 
-									  History.lon, 
-									  History.station_id)
-              	)
+        query = session.query(func.percentile_cont(0.01)
+        									     .within_group(Obs.datum.asc())
+        									     .label("temp"),
+        	                    func.min(Obs.time).label("time_min"),
+		                          func.max(Obs.time).label("time_max"),
+        	                    History.lat,
+            	                History.lon,
+                	            History.station_id)
+
+        query = query.group_by(History.lat,
+                               History.lon, 
+                               History.station_id) \
+                      .filter(and_(Obs.time >= self.start_time,
+	                        			   Obs.time <= self.end_time)) \
+       		            .filter(func.extract("month", Obs.time) == self.month) \
+              		    .filter(and_(Variable.standard_name == 'air_temperature',
+                                 	 Variable.id == 1510)) \
+                      .join(History).join(Variable)
 
         return query
 
