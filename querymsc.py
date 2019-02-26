@@ -80,8 +80,46 @@ class WorkflowTools:
         and the station id.  
         -----------------------------------------
         Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM with annual average rainfall
+            query (sqlalchemy query): sqlalchemy query object 
+                for annual average rainfall
+        """
+        yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
+        print("Year interval:", yr_interval)
+        if (yr_interval) < 1.0:
+            raise ValueError("Annual precipitation value requires \
+                             a time window of at least one year.")
+            return None
+
+        # construct desired table
+        query = session.query(func.sum(Obs.datum*0.1/yr_interval).label("sum"),
+                              func.min(Obs.time).label("min_date"),
+                              func.max(Obs.time).label("max_date"),
+                              History.lat, History.lon,
+                              History.station_id)
+
+        # filter results to annual rain in given time range
+        # select stations that have a max observed time that is
+        # at least the ending time requested.
+        query = query.group_by(History.lat, History.lon, History.station_id) \
+                     .having(func.max(Obs.time) >= self.end_time) \
+                     .filter(and_(Obs.time <= self.end_time,
+                                  Obs.time >= self.start_time)) \
+                     .filter(or_(Variable.id == 1395, Variable.id == 1452)) \
+                     .filter(Variable.standard_name == 'thickness_of_rainfall_amount') \
+                     .join(History).join(Variable)
+
+        return query
+
+    def query_annual_precip(self, session):
+        """A query to get the total annual average precipitation amount 
+        at a given station over a range of years. The table contains
+        the average total rainfall in mm, the maximum and minimum time used to
+        calculate the average from the station, the latitude, longitude
+        and the station id.  
+        -----------------------------------------
+        Returns: 
+            query (sqlalchemy query): sqlalchemy query object 
+                for annual average precip
         """
         yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
         print("Year interval:", yr_interval)
@@ -108,7 +146,6 @@ class WorkflowTools:
                      .join(History).join(Variable)
 
         return query
-
     
     def query_design_temp_25(self, session):
         """A query to get the 2.5th percentile of a given month across
@@ -248,7 +285,8 @@ class WorkflowTools:
         query = session.query(Variable.id,
                               Variable.standard_name,
                               Variable.description,
-                              Variable.unit)
+                              Variable.unit,
+                              Variable.cell_method)
 
         return query
 
