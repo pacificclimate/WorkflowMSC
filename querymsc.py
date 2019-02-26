@@ -151,38 +151,7 @@ class WorkflowTools:
 
         return query
     
-    def query_design_temp_25(self, session):
-        """A query to get the 2.5th percentile of a given month across
-        the entire operating history of a station in a range of time. 
-        All frequencies of observations are used, and the
-        regular non-corrected air temperature is being used for this 
-        calculation.
-        -----------------------------------------
-        Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM to query temperature percentiles 
-        """
-
-        # construct query table
-        query = session.query(func.percentile_cont(0.025) \
-                              .within_group(Obs.datum.asc()).label("temp"),
-                                            func.min(Obs.time).label("time_min"),
-                                            func.max(Obs.time).label("time_max"),
-                                            History.lat,
-                                            History.lon,
-                                            History.station_id).join(History).join(Variable)
-
-        # filter query
-        query = query.group_by(History.lat, History.lon, History.id) \
-                     .filter(and_(Obs.time>=self.start_time, Obs.time<=self.end_time)) \
-                     .filter(func.extract("month", Obs.time)==self.month) \
-                     .filter(and_(Variable.standard_name == 'air_temperature',
-                                  Variable.id == 1510)) \
-                     .filter(Obs.datum!=0.0)
-
-        return query
-
-    def query_design_temp_1(self, session):
+    def query_design_temp_percentile(self, session, percentile=0.01):
         """A query to get the 1st percentile of a given month across
         the entire operating history of a station in a range of time. 
         Only the year from start and end times are used to create the
@@ -190,38 +159,48 @@ class WorkflowTools:
         regular non-corrected air temperature is being used for this 
         calculation.
         -----------------------------------------
+        Args:
+            session (sqlalchemy Session): session constructed using
+                connection string and engine
+            percentile (float): desire percentile in fraction
         Returns: 
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
 
-        # construct query table
+        # construct query
         query = (
-                session.query(
-                                (func.percentile_cont(0.01)
+                 session.query(
+                                (func.percentile_cont(percentile)
                                      .within_group(Obs.datum.asc())
                                      .label("temp")),
-                                 func.min(Obs.time).label("time_min"),
-                                 func.max(Obs.time).label("time_max"),
-                                 History.lat,
-                                 History.lon,
-                                 History.station_id)
-                            # select from and make join explicit
-                            .select_from([History, Variable])
-                            .filter(
-                                    and_(Obs.time >= self.start_time,
-                                         Obs.time <= self.end_time)
-                                    )
-                            .filter(
-                                    func.extract("month", Obs.time) == self.month
-                                    )
-                            .filter(
-                                    and_(Variable.standard_name == 'air_temperature',
-                                         Variable.id == 1510)
-                                    )
-                            .group_by(History.lat, 
-                                      History.lon, 
-                                      History.station_id)
+                                func.min(Obs.time).label("time_min"),
+                                func.max(Obs.time).label("time_max"),
+                                History.lat.label("lat"),
+                                History.lon.label("lon"),
+                                History.station_id.label("station_id"),
+                                func.count(Obs.datum).label('obs_count')
+                                 )
+                        .join(History)
+                        .join(Variable, Variable.id == Variable.id)
+                        .filter(
+                                and_(Obs.time >= self.start_time,
+                                     Obs.time <= self.end_time)
+                                     )
+                        .filter(
+                                func.extract("month", Obs.time) == self.month
+                                )
+                        .filter(
+                                and_(Variable.standard_name == 'air_temperature',
+                                     Variable.id == 1510)
+                                )
+                        .filter(
+                                Obs.datum != 0.0
+                                )
+                        .group_by(History.lat, 
+                                  History.lon, 
+                                  History.station_id,
+                                  Variable.id)
                 )
   
         return query
