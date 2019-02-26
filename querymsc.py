@@ -102,7 +102,7 @@ class WorkflowTools:
         # at least the ending time requested.
         query = query.group_by(History.lat, History.lon, History.station_id) \
                      .having(and_(func.max(Obs.time) >= self.end_time, 
-                     				func.min(Obs.time) <= self.start_time)) \
+                                    func.min(Obs.time) <= self.start_time)) \
                      .filter(and_(Obs.time <= self.end_time,
                                   Obs.time >= self.start_time)) \
                      .filter(or_(Variable.id == 1395, Variable.id == 1452)) \
@@ -134,20 +134,20 @@ class WorkflowTools:
         # at least the ending time requested
         # construct desired table
         query = (
-        			session.query(
-	        					func.sum(Obs.datum*0.1/yr_interval).label("sum"),
-	                    		func.min(Obs.time).label("min_date"),
-	                    		func.max(Obs.time).label("max_date"),
-		                    	History.lat, History.lon,
-	                        	History.station_id)
-								.group_by(History.lat, History.lon, History.station_id)
-		                     	.having(and_(func.max(Obs.time) >= self.end_time, 
-		                     				 func.min(Obs.time) <= self.start_time))
-		                     	.filter(and_(Obs.time <= self.end_time,
-		                                   	 Obs.time >= self.start_time))
-		                     	.filter(Variable.id == 1397)
-		                     	.join(History).join(Variable)
-	            )
+                    session.query(
+                                func.sum(Obs.datum*0.1/yr_interval).label("sum"),
+                                func.min(Obs.time).label("min_date"),
+                                func.max(Obs.time).label("max_date"),
+                                History.lat, History.lon,
+                                History.station_id)
+                                .group_by(History.lat, History.lon, History.station_id)
+                                .having(and_(func.max(Obs.time) >= self.end_time, 
+                                             func.min(Obs.time) <= self.start_time))
+                                .filter(and_(Obs.time <= self.end_time,
+                                             Obs.time >= self.start_time))
+                                .filter(Variable.id == 1397)
+                                .join(History).join(Variable)
+                )
 
         return query
     
@@ -197,32 +197,32 @@ class WorkflowTools:
 
         # construct query table
         query = (
-        			session.query(
-        						    (func.percentile_cont(0.01)
-        									.within_group(Obs.datum.asc())
-        									.label("temp")),
-        	                        func.min(Obs.time).label("time_min"),
-		                            func.max(Obs.time).label("time_max"),
-        	                        History.lat,
-            	                    History.lon,
-                	                History.station_id)
-        					.join(History)
-        					.join(Variable)
-	                        .filter(
-	                        		and_(Obs.time >= self.start_time,
-	                        			 Obs.time <= self.end_time)
-	                        		)
-       		                .filter(
-       		                		func.extract("month", Obs.time) == self.month
-       		                		)
-              		        .filter(
-              		        		and_(Variable.standard_name == 'air_temperature',
-                                 		 Variable.id == 1510)
-              		        		)
-							.group_by(History.lat, 
-									  History.lon, 
-									  History.station_id)
-              	)
+                    session.query(
+                                    (func.percentile_cont(0.01)
+                                            .within_group(Obs.datum.asc())
+                                            .label("temp")),
+                                    func.min(Obs.time).label("time_min"),
+                                    func.max(Obs.time).label("time_max"),
+                                    History.lat,
+                                    History.lon,
+                                    History.station_id)
+                            .join(History)
+                            .join(Variable)
+                            .filter(
+                                    and_(Obs.time >= self.start_time,
+                                         Obs.time <= self.end_time)
+                                    )
+                            .filter(
+                                    func.extract("month", Obs.time) == self.month
+                                    )
+                            .filter(
+                                    and_(Variable.standard_name == 'air_temperature',
+                                         Variable.id == 1510)
+                                    )
+                            .group_by(History.lat, 
+                                      History.lon, 
+                                      History.station_id)
+                )
 
         return query
 
