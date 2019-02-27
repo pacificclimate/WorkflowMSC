@@ -37,41 +37,6 @@ class WorkflowTools:
         if (start_time < end_time) is False:
             raise ValueError("Start time cannot be later than end time.")
 
-    def query_baseline(self, session):
-        """A simple query to get all observations for 
-        all available stations in a given time window
-        --------------------------------------------------------
-        Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM to get all observations in given time frame
-        """
-
-        query = session.query(Obs.datum, Obs.time, 
-                              Variable.standard_name, 
-                              History.station_id) \
-                              .filter(Obs.time<=self.end_time) \
-                              .filter(Obs.time>=self.start_time) \
-                              .join(History).join(Variable)
-
-        return query
-
-    def query_precip(self, session):
-        """A simple query to get all precipitation observations
-        of total precip for all available stations in a 
-        given time window
-        --------------------------------------------------------
-        Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM
-        """
-        query = self.baseline().filter(Variable.standard_name == "lwe_thickness_of_precipitation_amount") \
-             .filter(or_(Variable.description == "Total precipiation", 
-                Variable.id == 1397))
-
-
-        return query
-
-
     def query_annual_rain(self, session):
         """A query to get the total annual average rainfall amount 
         at a given station over a range of years. The table contains
@@ -84,30 +49,39 @@ class WorkflowTools:
                 for annual average rainfall
         """
         yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
-        print("Year interval:", yr_interval)
+
         if (yr_interval) < 1.0:
             raise ValueError("Annual precipitation value requires \
                              a time window of at least one year.")
             return None
 
         # construct desired table
-        query = session.query(func.sum(Obs.datum*0.1/yr_interval).label("sum"),
-                              func.min(Obs.time).label("min_date"),
-                              func.max(Obs.time).label("max_date"),
-                              History.lat, History.lon,
-                              History.station_id)
-
-        # filter results to annual rain in given time range
-        # select stations that have a max observed time that is
-        # at least the ending time requested.
-        query = query.group_by(History.lat, History.lon, History.station_id) \
-                     .having(and_(func.max(Obs.time) >= self.end_time, 
-                                    func.min(Obs.time) <= self.start_time)) \
-                     .filter(and_(Obs.time <= self.end_time,
-                                  Obs.time >= self.start_time)) \
-                     .filter(or_(Variable.id == 1395, Variable.id == 1452)) \
-                     .filter(Variable.standard_name == 'thickness_of_rainfall_amount') \
-                     .join(History).join(Variable)
+        query = (
+                 session.query(func.sum(Obs.datum*0.1/yr_interval).label("sum"),
+                               func.min(Obs.time).label("min_date"),
+                               func.max(Obs.time).label("max_date"),
+                               History.lat,
+                               History.lon,
+                               History.station_id)
+                        .join(History)
+                        .join(Variable, Variable.id == Variable.id)
+                        .having(
+                                and_(func.max(Obs.time) >= self.end_time, 
+                                     func.min(Obs.time) <= self.start_time)
+                                )
+                        .filter(
+                                and_(Obs.time <= self.end_time,
+                                     Obs.time >= self.start_time)
+                                )
+                        .filter(
+                                or_(Variable.id == 1395,
+                                    Variable.id == 1452)
+                                )
+                        .filter(Variable.standard_name == 'thickness_of_rainfall_amount')
+                        .group_by(History.lat,
+                                  History.lon,
+                                  History.station_id)
+                )
 
         return query
 
@@ -134,19 +108,27 @@ class WorkflowTools:
         # at least the ending time requested
         # construct desired table
         query = (
-                    session.query(
+                 session.query(
                                 func.sum(Obs.datum*0.1/yr_interval).label("sum"),
                                 func.min(Obs.time).label("min_date"),
                                 func.max(Obs.time).label("max_date"),
                                 History.lat, History.lon,
-                                History.station_id)
-                                .group_by(History.lat, History.lon, History.station_id)
-                                .having(and_(func.max(Obs.time) >= self.end_time, 
-                                             func.min(Obs.time) <= self.start_time))
-                                .filter(and_(Obs.time <= self.end_time,
-                                             Obs.time >= self.start_time))
-                                .filter(Variable.id == 1397)
-                                .join(History).join(Variable)
+                                History.station_id
+                               )
+                        .join(History)
+                        .join(Variable, Variable.id == Variable.id)
+                        .having(
+                                and_(func.max(Obs.time) >= self.end_time, 
+                                     func.min(Obs.time) <= self.start_time)
+                                )
+                        .filter(
+                                and_(Obs.time <= self.end_time,
+                                     Obs.time >= self.start_time)
+                                )
+                        .filter(Variable.id == 1397)
+                        .group_by(History.lat,
+                                  History.lon,
+                                  History.station_id)
                 )
 
         return query
@@ -173,14 +155,14 @@ class WorkflowTools:
                  session.query(
                                 (func.percentile_cont(percentile)
                                      .within_group(Obs.datum.asc())
-                                     .label("temp")),
+                                     .label("temp"))*0.1,
                                 func.min(Obs.time).label("time_min"),
                                 func.max(Obs.time).label("time_max"),
                                 History.lat.label("lat"),
                                 History.lon.label("lon"),
                                 History.station_id.label("station_id"),
                                 func.count(Obs.datum).label('obs_count')
-                                 )
+                              )
                         .join(History)
                         .join(Variable, Variable.id == Variable.id)
                         .filter(
@@ -199,8 +181,7 @@ class WorkflowTools:
                                 )
                         .group_by(History.lat, 
                                   History.lon, 
-                                  History.station_id,
-                                  Variable.id)
+                                  History.station_id)
                 )
   
         return query
