@@ -42,8 +42,11 @@ class WorkflowTools:
         at a given station over a range of years. The table contains
         the average total rainfall in mm, the maximum and minimum time used to
         calculate the average from the station, the latitude, longitude
-        and the station id.  
+        and the station id. This method uses daily total rainfall.
         -----------------------------------------
+        Args:
+            session (sqlalchemy Session): session constructed using
+                connection string and engine
         Returns: 
             query (sqlalchemy query): sqlalchemy query object 
                 for annual average rainfall
@@ -51,37 +54,33 @@ class WorkflowTools:
         yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
 
         if (yr_interval) < 1.0:
-            raise ValueError("Annual precipitation value requires \
+            raise ValueError("Annual rainfall value requires \
                              a time window of at least one year.")
             return None
 
         # construct desired table
         query = (
-                 session.query(func.sum(Obs.datum*0.1/yr_interval).label("sum"),
+                 session.query(func.sum(Obs.datum*0.1/yr_interval).label("annual_rain"),
                                func.min(Obs.time).label("min_date"),
                                func.max(Obs.time).label("max_date"),
+                               (func.count(Obs.datum)
+                               		/(yr_interval*365.)).label('completeness'),
                                History.lat,
                                History.lon,
                                History.station_id)
-                        .join(History)
-                        .join(Variable, Variable.id == Variable.id)
-                        .having(
-                                and_(func.max(Obs.time) >= self.end_time, 
-                                     func.min(Obs.time) <= self.start_time)
-                                )
-                        .filter(
-                                and_(Obs.time <= self.end_time,
-                                     Obs.time >= self.start_time)
-                                )
-                        .filter(
-                                or_(Variable.id == 1395,
-                                    Variable.id == 1452)
-                                )
-                        .filter(Variable.standard_name == 'thickness_of_rainfall_amount')
+                        .select_from(Obs)
+                        .join(Variable, Obs.vars_id == Variable.id)
+                        .join(History, Obs.history_id == History.id)
+                        .filter(and_(Obs.time >= self.start_time,
+                                	 Obs.time < self.end_time))
+                        .filter(and_(Variable.standard_name == 'thickness_of_rainfall_amount',
+                                     Variable.cell_method == 'time: sum'))
+                        .filter(or_(Variable.name == '10',
+                        			Variable.name == '48'))
                         .group_by(History.lat,
                                   History.lon,
                                   History.station_id)
-                )
+                 )
 
         return query
 
@@ -89,9 +88,12 @@ class WorkflowTools:
         """A query to get the total annual average precipitation amount 
         at a given station over a range of years. The table contains
         the average total rainfall in mm, the maximum and minimum time used to
-        calculate the average from the station, the latitude, longitude
-        and the station id.  
+        calculate the average from the station, the completeness of 
+        calculated value the latitude, longitude and the station id.  
         -----------------------------------------
+        Args:
+            session (sqlalchemy Session): session constructed using
+                connection string and engine
         Returns: 
             query (sqlalchemy query): sqlalchemy query object 
                 for annual average precip
@@ -108,32 +110,31 @@ class WorkflowTools:
         # at least the ending time requested
         # construct desired table
         query = (
-                 session.query(
-                                func.sum(Obs.datum*0.1/yr_interval).label("sum"),
-                                func.min(Obs.time).label("min_date"),
-                                func.max(Obs.time).label("max_date"),
-                                History.lat, History.lon,
-                                History.station_id
-                               )
-                        .join(History)
-                        .join(Variable, Variable.id == Variable.id)
-                        .having(
-                                and_(func.max(Obs.time) >= self.end_time, 
-                                     func.min(Obs.time) <= self.start_time)
-                                )
-                        .filter(
-                                and_(Obs.time >= self.start_time,
-                                     Obs.time < self.end_time)
-                                )
-                        .filter(Variable.id == 1397)
+                 session.query(func.sum(Obs.datum*0.1/yr_interval).label("annual_precip"),
+                               func.min(Obs.time).label("min_date"),
+                               func.max(Obs.time).label("max_date"),
+                               (func.count(Obs.datum)
+                               		/(yr_interval*365.)).label('completeness'),
+                               History.lat,
+                               History.lon,
+                               History.station_id)
+                        .select_from(Obs)
+                        .join(Variable, Obs.vars_id == Variable.id)
+                        .join(History, Obs.history_id == History.id)
+                        .filter(and_(Obs.time >= self.start_time,
+                                	 Obs.time < self.end_time))
+                        .filter(and_(Variable.standard_name == 'lwe_thickness_of_precipitation_amount',
+                                     Variable.cell_method == 'time: sum'))
+                        .filter(or_(Variable.name == '12',
+                        			Variable.name == '50'))
                         .group_by(History.lat,
                                   History.lon,
                                   History.station_id)
-                )
+                 )
 
         return query
     
-    def query_design_temp_percentile(self, session, percentile=0.01):
+    def query_design_temp_percentile(self, session, percentile=0.01, days_in_month=31):
         """A query to get the 1st percentile of a given month across
         the entire operating history of a station in a range of time. 
         Only the year from start and end times are used to create the
@@ -149,7 +150,6 @@ class WorkflowTools:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
-        days_in_month = 31
         yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
         total_days = days_in_month*yr_interval        
 
