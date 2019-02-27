@@ -149,6 +149,9 @@ class WorkflowTools:
             query (sqlalchemy query): sqlalchemy query constructed 
                 using ORM to query temperature percentiles 
         """
+        days_in_month = 31
+        yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
+        total_days = days_in_month*yr_interval        
 
         # factor of 0.1 added for unit conversion percentile due to
         # msc native units of 0.1 Celsius.
@@ -174,10 +177,11 @@ class WorkflowTools:
                                 History.lat.label("lat"),
                                 History.lon.label("lon"),
                                 History.station_id.label("station_id"),
-                                func.count(Obs.datum).label('obs_count')
+                                (func.count(Obs.datum)/total_days).label('completeness')
                                )
-                        .join(History, Obs.history_id == History.id)
+                        .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
+                        .join(History, Obs.history_id == History.id)
                         .filter(and_(Obs.time >= self.start_time,
                                      Obs.time < self.end_time))
                         .filter(func.extract("month", Obs.time) == self.month)
