@@ -1,5 +1,5 @@
 import datetime
-import calendar
+from calendar import monthrange
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -25,11 +25,12 @@ class WorkflowTools:
             where necessary
     """
 
-    def __init__(self, start_time, end_time, month=1, days_in_month=31):
+    def __init__(self, start_time, end_time, month=1):
 
         self.month = month
         self.start_time = start_time
         self.end_time = end_time
+        self.days_in_month = monthrange(self.start_time.year, month)[1]
 
         # query variables
 
@@ -37,7 +38,7 @@ class WorkflowTools:
         self.yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
         
         # total number of days in month
-        self.total_days = days_in_month*self.yr_interval
+        self.total_days = self.days_in_month*self.yr_interval
        
         # total number of hours in month
         self.total_hours = self.total_days*24
