@@ -6,7 +6,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import and_, or_
 from sqlalchemy.sql import func
 from sqlalchemy import case
-from sqlalchemy import distinct
 
 import numpy as np
 import pandas as pd
