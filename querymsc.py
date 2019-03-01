@@ -27,16 +27,16 @@ class WorkflowTools:
 
     def __init__(self, start_time, end_time, month=1):
 
-        self.month = month
+        # query variables
+        self.month = self.safe_month(month)
         self.start_time = start_time
         self.end_time = end_time
         self.days_in_month = monthrange(self.start_time.year, month)[1]
 
-        # query variables
-
         # year range 
-        self.yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
-        
+        yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
+        self.yr_interval = self.annual_safe_year(yr_interval)
+
         # total number of days in month
         self.total_days = self.days_in_month*self.yr_interval
        
@@ -46,8 +46,6 @@ class WorkflowTools:
         # record the max and min time taken from the database
         self.time_max = func.max(Obs.time).label("time_max")
         self.time_min = func.min(Obs.time).label("time_min")
-
-        print(self.yr_interval, self.total_days, self.total_hours)
 
         # record lat/lon/station_id from history of the station
         self.lat = History.lat.label("lat")
@@ -62,39 +60,39 @@ class WorkflowTools:
         self.daily_complete = (self.count/self.total_days).label('completeness')
         self.hourly_complete = (self.count/self.total_hours).label('completeness')
         self.annual_complete = (self.count/365.0).label('completeness')
-        # check start and end times
-        if (start_time < end_time) is False:
-            raise ValueError("Start time cannot be later than end time.")
-
-    def safe_month(self, month=None):
-        if month is None:
-            month = self.month
-
+        
+    def safe_month(self, month):
         if (month > 12) or (month < 1):
             raise ValueError("Invalid month specified.")
 
         return month
 
+    def annual_safe_year(self, yr_interval):
+        # check start and end times
+        if (self.start_time < self.end_time) is False:
+            raise ValueError("Start time cannot be later than end time.")
+
+        if (yr_interval) < 1.0:
+            raise ValueError("Annual rainfall value requires \
+                             a time window of at least one year.")
+            return None
+
+        return yr_interval
+
     def query_annual_rain(self, session):
         """A query to get the total annual average rainfall amount 
-        at a given station over a range of years. The table contains
-        the average total rainfall in mm, the maximum and minimum time used to
-        calculate the average from the station, the latitude, longitude
-        and the station id. This method uses daily total rainfall.
+        at a given station over a range of years.
+        This method uses daily total rainfall.
         -----------------------------------------
         Args:
             session (sqlalchemy Session): session constructed using
                 connection string and engine
         Returns: 
             query (sqlalchemy query): sqlalchemy query object 
-                for annual average rainfall
+                for design value
         """
-        yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
 
-        if (yr_interval) < 1.0:
-            raise ValueError("Annual rainfall value requires \
-                             a time window of at least one year.")
-            return None
+
 
         annual_rain = func.sum(Obs.datum*0.1/self.yr_interval).label("annual_rain")
 
@@ -124,24 +122,18 @@ class WorkflowTools:
 
         return query
 
-    def query_annual_precip(self, session, month=None):
+    def query_annual_precip(self, session):
         """A query to get the total annual average precipitation amount 
-        at a given station over a range of years. The table contains
-        the average total rainfall in mm, the maximum and minimum time used to
-        calculate the average from the station, the completeness of 
-        calculated value the latitude, longitude and the station id.  
+        at a given station over a range of years. This method uses 
+        daily total precipitation.  
         -----------------------------------------
         Args:
             session (sqlalchemy Session): session constructed using
                 connection string and engine
         Returns: 
             query (sqlalchemy query): sqlalchemy query object 
-                for annual average precip
+                for design value
         """
-        if (self.yr_interval) < 1.0:
-            raise ValueError("Annual precipitation value requires \
-                             a time window of at least one year.")
-            return None
 
         annual_precip = func.sum(Obs.datum*0.1/self.yr_interval).label("annual_precip")
     
@@ -171,19 +163,20 @@ class WorkflowTools:
 
         return query
     
-    def query_design_temp_percentile(self, session, percentile=0.01, days_in_month=31, month=1):
-        """A query to get the 1st percentile of a given month across
-        the entire operating history of a station in a range of time. 
-        Only the year from start and end times are used to create the
-        time frame. All daily minimum air temperatures are used
+    def query_design_temp_percentile(self, session, percentile=0.01, month=1):
+        """A query to get the percentile of minimum daily air_temperatures 
+        at a station in a given time frame. Daily minimum air
+        temperatures are used.
         -----------------------------------------
         Args:
             session (sqlalchemy Session): session constructed using
                 connection string and engine
             percentile (float): desire percentile in fraction
+            month (int, optional): desired month in which to calculate 
+                the desired percentile, default is 1, or January.
         Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM to query temperature percentiles 
+            query (sqlalchemy query): sqlalchemy query object 
+                for design value
         """
 
         month = self.safe_month(month)
@@ -220,17 +213,22 @@ class WorkflowTools:
   
         return query
 
-    def query_design_temp_dry(self, session, days_in_month=31, month=None, percentile=0.025):
-        """A query to get the 2.5th percentile of July across
-        the entire operating history of a station in a range of time. 
-        Only the year from start and end times are used to create the
-        time frame. All frequencies of observations are used, and the
-        regular non-corrected air temperature is being used for this 
-        calculation.
-        -----------------------------------------
+    def query_design_temp_dry(self, session, month=7, percentile=0.025):
+        """A query to get the percentile of maximum daily 
+        air_temperatures (it is assumed that dry bulb temperatures are
+        identical to regular air temperatures) at a station in a 
+        given time frame. Daily maximum air temperatures are used.
+        ---------------------------------------------------------
+        Args:
+            session (sqlalchemy Session): session constructed using
+                connection string and engine
+            percentile (float, optional): desire percentile in fraction.
+                Default value is 0.0025 or the 2.5th percentile
+            month (int, optional): desired month in which to calculate 
+                the desired percentile, default is 7, or July.
         Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM to query temperature percentiles 
+            query (sqlalchemy query): sqlalchemy query object 
+                for design value
         """
 
         month = self.safe_month(month)
@@ -269,22 +267,30 @@ class WorkflowTools:
 
         return query
 
-    def query_design_temp_wet(self, session, days_in_month=31, month=None, percentile=0.025):
-        """A query to get the 1st percentile of a given month across
-        the entire operating history of a station in a range of time. 
-        Only the year from start and end times are used to create the
-        time frame. All frequencies of observations are used, and the
-        regular non-corrected air temperature is being used for this 
-        calculation.
-        -----------------------------------------
+    def query_design_temp_wet(self, session, month=7, percentile=0.025):
+        """A query to get the percentile of maximum daily 
+        wet_bulb_temperatures at a station in a given time frame. 
+        There is a mixed frequency of this variable in dbmsc, and so a 
+        temp patch to guess the frequency based on obs_count
+        is used. As of Feb 28, 2019, Faron Anslow is working to include a
+        filtering option in net_vars_id. This is a known issue. 
+        ---------------------------------------------------------
+        Args:
+            session (sqlalchemy Session): session constructed using
+                connection string and engine
+            percentile (float, optional): desire percentile in fraction.
+                Default value is 0.0025 or the 2.5th percentile
+            month (int, optional): desired month in which to calculate 
+                the desired percentile, default is 7, or July.
         Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM to query temperature percentiles 
+            query (sqlalchemy query): sqlalchemy query object 
+                for design value
         """
         month = self.safe_month(month)
 
         # create a condition that separates daily and hourly data and calculates
         # the completeness based on total number of theoretical observations
+        # by guessing the frequency
         expr = (
                 case([(func.count(Obs.datum) <= 31,
                        func.count(Obs.datum)/self.total_days)], 
@@ -325,12 +331,15 @@ class WorkflowTools:
         return query
 
     def query_variables(self, session):
-        """A simple query to get all available variables to 
+        """A simple query to get variable types to 
         reference while building workflow tool. 
         -----------------------------------------
+        Args:
+            session (sqlalchemy Session): session constructed using
+                connection string and engine
         Returns: 
-            query (sqlalchemy query): sqlalchemy query constructed 
-                using ORM to query variables
+            query (sqlalchemy query): sqlalchemy query object 
+                for design value
         """
 
         query = session.query(Variable.id,
