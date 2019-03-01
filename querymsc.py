@@ -31,17 +31,17 @@ class WorkflowTools:
         self.month = self.safe_month(month)
         self.start_time = start_time
         self.end_time = end_time
-        self.days_in_month = monthrange(self.start_time.year, month)[1]
+
+        self.total_days = float((end_time - start_time).days)
 
         # year range 
-        yr_interval = float(np.abs(self.end_time.year-self.start_time.year))
+        yr_interval = float(end_time.year - start_time.year)
         self.yr_interval = self.annual_safe_year(yr_interval)
 
-        # total number of days in month
-        self.total_days = self.days_in_month*self.yr_interval
-       
+        self.days_in_month = float(monthrange(self.start_time.year, month)[1])*yr_interval
+
         # total number of hours in month
-        self.total_hours = self.total_days*24
+        self.total_hours = self.days_in_month*24
 
         # record the max and min time taken from the database
         self.time_max = func.max(Obs.time).label("time_max")
@@ -59,7 +59,8 @@ class WorkflowTools:
         # the completeness based on total number of theoretical observations
         self.daily_complete = (self.count/self.total_days).label('completeness')
         self.hourly_complete = (self.count/self.total_hours).label('completeness')
-        self.annual_complete = (self.count/365.0).label('completeness')
+        self.month_days_complete = (self.count/self.days_in_month).label('completeness')
+        #self.annual_complete = (self.count/self.total_days_ann).label('completeness')
         
     def safe_month(self, month):
         if (month > 12) or (month < 1):
@@ -68,14 +69,15 @@ class WorkflowTools:
         return month
 
     def annual_safe_year(self, yr_interval):
+        print(yr_interval)
         # check start and end times
         if (self.start_time < self.end_time) is False:
             raise ValueError("Start time cannot be later than end time.")
 
-        if (yr_interval) < 1.0:
-            raise ValueError("Annual rainfall value requires \
-                             a time window of at least one year.")
-            return None
+        #if (yr_interval) < 1.0:
+        #    raise ValueError("Annual rainfall value requires \
+        #                     a time window of at least one year.")
+        #    return None
 
         return yr_interval
 
@@ -104,17 +106,16 @@ class WorkflowTools:
                                self.lat,
                                self.lon,
                                self.station_id,
-                               self.count,
-                               self.annual_complete)
+                               self.daily_complete)
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
                         .filter(and_(Obs.time >= self.start_time,
-                                	 Obs.time < self.end_time))
+                                     Obs.time < self.end_time))
                         .filter(and_(Variable.standard_name == 'thickness_of_rainfall_amount',
                                      Variable.cell_method == 'time: sum'))
                         .filter(or_(Variable.name == '10',
-                        			Variable.name == '48'))
+                                    Variable.name == '48'))
                         .group_by(History.lat,
                                   History.lon,
                                   History.station_id)
@@ -145,17 +146,17 @@ class WorkflowTools:
                                self.lon,
                                self.station_id,
                                self.count,
-                               self.annual_complete)
+                               self.daily_complete)
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
                         .filter(and_(Obs.time >= self.start_time,
-                                	 Obs.time < self.end_time))
+                                     Obs.time < self.end_time))
                         .filter(and_(Variable.standard_name 
                                 == 'lwe_thickness_of_precipitation_amount',
                                      Variable.cell_method == 'time: sum'))
                         .filter(or_(Variable.name == '12',
-                        			Variable.name == '50'))
+                                    Variable.name == '50'))
                         .group_by(History.lat,
                                   History.lon,
                                   History.station_id)
@@ -194,8 +195,7 @@ class WorkflowTools:
                                self.lat,
                                self.lon,
                                self.station_id,
-                               self.daily_complete
-                               )
+                               self.month_days_complete)
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
@@ -248,8 +248,7 @@ class WorkflowTools:
                                self.lat,
                                self.lon,
                                self.station_id,
-                               self.daily_complete,
-                               self.count)
+                               self.month_days_complete)
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
@@ -291,11 +290,11 @@ class WorkflowTools:
         # create a condition that separates daily and hourly data and calculates
         # the completeness based on total number of theoretical observations
         # by guessing the frequency
+
         expr = (
-                case([(func.count(Obs.datum) <= 31,
-                       func.count(Obs.datum)/self.total_days)], 
-                       else_=func.count(Obs.datum)/self.total_hours)
-                               .label('completeness')
+                case([(func.count(Obs.datum) <= self.days_in_month,
+                       self.month_days_complete)], 
+                       else_=self.hourly_complete).label('completeness')
                 )
         
         # get percentile from group convert to celsius
@@ -306,7 +305,7 @@ class WorkflowTools:
              )
 
         query = (
-        		 session.query(p,
+                 session.query(p,
                                self.time_min,
                                self.time_max,
                                self.lat,
@@ -365,7 +364,6 @@ class WorkflowTools:
         """
         # get heating degree days below 18 C, convert to celsius, take mean
         hdd = func.sum((18.0-Obs.datum*0.1)/self.yr_interval).label("hdd")
-
         query = (
                  session.query(hdd,
                                self.time_min,
@@ -373,14 +371,13 @@ class WorkflowTools:
                                self.lat, 
                                self.lon,
                                self.station_id,
-                               self.count/365.0
+                               self.daily_complete
                                )
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
                         .filter(and_(Obs.time >= self.start_time,
                                      Obs.time < self.end_time))
-                        .filter(func.extract("month", Obs.time) == month)
                         .filter(Variable.name == '3')
                         .filter(and_(Variable.standard_name == 'air_temperature',
                                      Variable.cell_method == 'time: mean'))
@@ -389,5 +386,44 @@ class WorkflowTools:
                                   History.lon, 
                                   History.station_id)
                 )
+  
+        return query
+
+    def query_rain_rate_15(self, session):
+        """A query to get the heating degree days (hdd) 
+        "Degree Days Below 18C". If start/end time
+        range is longer than a year, then the average
+        degree day across the annual range is used.
+        Each comparison is made between 18C and a 
+        daily mean temperature.
+        -----------------------------------------
+        Returns: 
+            query (sqlalchemy query): sqlalchemy query object
+            containing hdd values   
+        """
+
+        # get mean 15 minute rainfall rate
+        rainfall_rate = func.max(Obs.datum*0.1).label("rainfall_rate")
+
+        query = (
+                 session.query(rainfall_rate,
+                               self.time_min,
+                               self.time_max,
+                               self.lat, 
+                               self.lon,
+                               self.station_id,
+                               self.daily_complete)
+                        .select_from(Obs)
+                        .join(Variable, Obs.vars_id == Variable.id)
+                        .join(History, Obs.history_id == History.id)
+                        .filter(and_(Obs.time >= self.start_time,
+                                     Obs.time < self.end_time))
+                        .filter(and_(Variable.name == '127', 
+                                     Variable.standard_name == 'rainfall_rate'))
+                        .group_by(History.lat, 
+                                  History.lon, 
+                                  History.station_id
+                                  )
+                 )
   
         return query
