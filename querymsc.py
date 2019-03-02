@@ -397,9 +397,9 @@ class WorkflowTools:
         Each comparison is made between 18C and a 
         daily mean temperature.
         -----------------------------------------
-        Returns: 
+        Returns:
             query (sqlalchemy query): sqlalchemy query object
-            containing hdd values   
+            containing hdd values
         """
 
         # get mean 15 minute rainfall rate
@@ -412,7 +412,7 @@ class WorkflowTools:
                                self.lat, 
                                self.lon,
                                self.station_id,
-                               self.daily_complete)
+                               (self.daily_complete*self.yr_interval).label('completeness'))
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
@@ -420,10 +420,10 @@ class WorkflowTools:
                                      Obs.time < self.end_time))
                         .filter(and_(Variable.name == '127', 
                                      Variable.standard_name == 'rainfall_rate'))
-                        .group_by(History.lat, 
-                                  History.lon, 
-                                  History.station_id
-                                  )
+                        .group_by(func.extract("year", Obs.time), 
+                                  History.lat, 
+                                  History.lon,
+                                  History.station_id)
                  )
   
         return query
