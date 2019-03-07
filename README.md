@@ -22,7 +22,7 @@ The general form of the Cumulative Distribution Function (CDF) for the right-ske
 
 
 
-$$F(X) = e^{- e^{- (X-\mu)/\beta}}$$
+\\[ F(X) = e^{- e^{- (X-\mu)/\beta}} \\]
 
 
 
@@ -42,7 +42,7 @@ We can then express the probability, $P(X)$, of having an event occur within $t_
 
 
 
-$$P(0 \leq X \leq x_v) = F(x_v) - F(0) = f_r$$
+$$P(0 \leq X \leq x_v) = F(x_v) - F(0) = f_r​$$
 
 
 
@@ -64,7 +64,7 @@ For a Gumbel distribution, only the first two *L-moments* need to be calculated.
 
 $$l_1 = n^{-1} \sum_i^N{X_i}$$
 
-$$l_2 = \frac{1}{2}\left(N \atop 2\right)^{-1}{\sum\sum \atop i \gt j}{\left(X_{i:N} - X_{j:N}\right)}$$
+$$l_2 = \frac{1}{2}\left(N \atop 2\right)^{-1}{\sum\sum \atop i \gt j}{\left(X_{i:N} - X_{j:N}\right)}​$$
 
 
 
@@ -92,7 +92,7 @@ Solving for $x_v$, the magnitude of the extreme weather event with probability $
 
 
 
-$$x_v = \hat{\xi} - \hat{\alpha}\log{\left(-\log\left(f_r +  e^{-e^{\hat{\xi}/\beta}}\right)\right)}$$
+$$x_v = \hat{\xi} - \hat{\alpha}\log{\left(-\log\left(f_r +  e^{-e^{\hat{\xi}/\beta}}\right)\right)}​$$
 
 
 
