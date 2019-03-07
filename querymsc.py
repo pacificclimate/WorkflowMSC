@@ -383,10 +383,10 @@ class WorkflowTools:
                         .filter(and_(Variable.standard_name == 'air_temperature',
                                      Variable.cell_method == 'time: mean'))
                         .filter(Obs.datum != 0.0) # bad obs are sometimes 0.0
-                        .group_by(History.lat, 
-                                  History.lon, 
+                        .group_by(History.lat,
+                                  History.lon,
                                   History.station_id)
-                )
+                 )
   
         return query
 
@@ -419,8 +419,11 @@ class WorkflowTools:
                         .join(History, Obs.history_id == History.id)
                         .filter(and_(Obs.time >= self.start_time,
                                      Obs.time < self.end_time))
-                        .filter(and_(Variable.name == '127', 
-                                     Variable.standard_name == 'rainfall_rate'))
+                        .filter(Variable.standard_name == 'lwe_thickness_of_precipitation_amount')
+                        .filter(or_(Variable.name == '263', 
+                                    Variable.name == '264', 
+                                    Variable.name == '265', 
+                                    Variable.name == '266'))
                         .group_by(func.extract("year", Obs.time), 
                                   History.lat, 
                                   History.lon,
