@@ -8,6 +8,7 @@ from sqlalchemy.sql import func
 from sqlalchemy import case
 
 import numpy as np
+import math
 import pandas as pd
 import pgpasslib
 
