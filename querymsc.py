@@ -383,10 +383,10 @@ class WorkflowTools:
                         .filter(and_(Variable.standard_name == 'air_temperature',
                                      Variable.cell_method == 'time: mean'))
                         .filter(Obs.datum != 0.0) # bad obs are sometimes 0.0
-                        .group_by(History.lat, 
-                                  History.lon, 
+                        .group_by(History.lat,
+                                  History.lon,
                                   History.station_id)
-                )
+                 )
   
         return query
 
