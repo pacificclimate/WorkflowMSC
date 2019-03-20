@@ -60,7 +60,9 @@ class WorkflowTools:
         # the completeness based on total number of theoretical observations
         self.daily_complete = (self.count/self.total_days).label('completeness')
         self.hourly_complete = (self.count/self.total_hours).label('completeness')
+        self.hourly_complete_yr = (self.count/((self.total_days/self.yr_interval)*24*4)).label('completeness')
         self.month_days_complete = (self.count/self.days_in_month).label('completeness')
+
         #self.annual_complete = (self.count/self.total_days_ann).label('completeness')
         
     def safe_month(self, month):
@@ -391,19 +393,17 @@ class WorkflowTools:
         return query
 
     def query_rain_rate_15(self, session):
-        """A query to get the heating degree days (hdd) 
-        "Degree Days Below 18C". If start/end time
-        range is longer than a year, then the average
-        degree day across the annual range is used.
-        Each comparison is made between 18C and a 
-        daily mean temperature.
+        """A query to get the maximum annual 15 minute duration 
+        rainfall amounts. This method uses quarter hour 
+        observatons and extracts the maximum at a 
+        given station in a given year.
         -----------------------------------------
         Returns:
             query (sqlalchemy query): sqlalchemy query object
             containing hdd values
         """
 
-        # get mean 15 minute rainfall rate
+        # get max 15 minute rainfall rate
         rainfall_rate = func.max(Obs.datum*0.1).label("rainfall_rate")
 
         query = (
@@ -413,17 +413,91 @@ class WorkflowTools:
                                self.lat, 
                                self.lon,
                                self.station_id,
-                               (self.daily_complete*self.yr_interval).label('completeness'))
+                               (func.count(Obs.datum)/(self.total_days/self.yr_interval)/(24*4)).label('completeness'),
+                               History.freq)
                         .select_from(Obs)
                         .join(Variable, Obs.vars_id == Variable.id)
                         .join(History, Obs.history_id == History.id)
                         .filter(and_(Obs.time >= self.start_time,
                                      Obs.time < self.end_time))
                         .filter(Variable.standard_name == 'lwe_thickness_of_precipitation_amount')
-                        .filter(or_(Variable.name == '263', 
-                                    Variable.name == '264', 
-                                    Variable.name == '265', 
+                        .filter(or_(Variable.name == '263',
+                                    Variable.name == '264',
+                                    Variable.name == '265',
                                     Variable.name == '266'))
+                        .group_by(func.extract("year", Obs.time), 
+                                  History.lat, 
+                                  History.lon,
+                                  History.station_id,
+                                  History.freq)
+                 )
+  
+        return query
+
+    def query_rain_rate_15_rfr_test(self, session):
+        """A query to get the maximum annual 15 minute duration 
+        rainfall amounts. This method uses the rainfall_rate
+        variable which is a daily maximum. This method returns 
+        the maximum annual 15 minute duration rainfall amounts.
+        -----------------------------------------
+        Returns:
+            query (sqlalchemy query): sqlalchemy query object
+            containing hdd values
+        """
+
+        # get annual max 15 minute rainfall rate
+        rainfall_rate = func.max(Obs.datum*0.1).label("rainfall_rate")
+        print(self.yr_interval)
+        query = (session.query(rainfall_rate,
+                               self.time_min,
+                               self.time_max,
+                               self.lat, 
+                               self.lon,
+                               self.station_id,
+                               (func.count(Obs.datum)/(self.total_days/self.yr_interval)).label('completeness'),
+                               History.freq)
+                        .select_from(Obs)
+                        .join(Variable, Obs.vars_id == Variable.id)
+                        .join(History, Obs.history_id == History.id)
+                        .filter(and_(Obs.time >= self.start_time,
+                                     Obs.time < self.end_time))
+                        .filter(Variable.standard_name == 'rainfall_rate')
+                        .filter(Variable.name == '127')
+                        .group_by(func.extract("year", Obs.time), 
+                                  History.lat, 
+                                  History.lon,
+                                  History.station_id,
+                                  History.freq))
+        return query
+
+    def query_rain_rate_one_day_1_50(self, session):
+        """A query to get the maximum annual 24hr duration 
+        rainfall amounts. This method uses the rainfall_rate
+        variable which is a daily maximum.
+        -----------------------------------------
+        Returns:
+            query (sqlalchemy query): sqlalchemy query object
+            containing hdd values
+        """
+
+        # get annual max 24hr duration rainfall rate
+        rainfall_rate = func.max(Obs.datum*0.1).label("rainfall_rate")
+
+        query = (
+                 session.query(rainfall_rate,
+                               self.time_min,
+                               self.time_max,
+                               self.lat, 
+                               self.lon,
+                               self.station_id,
+                               (func.count(Obs.datum)/(self.total_days/self.yr_interval)).label('completeness'))
+                        .select_from(Obs)
+                        .join(Variable, Obs.vars_id == Variable.id)
+                        .join(History, Obs.history_id == History.id)
+                        .filter(and_(Obs.time >= self.start_time,
+                                     Obs.time < self.end_time))
+                        .filter(and_(Variable.standard_name == 'rainfall_rate',
+                                     Variable.name == '161'))
                         .group_by(func.extract("year", Obs.time), 
                                   History.lat, 
                                   History.lon,
@@ -431,3 +505,57 @@ class WorkflowTools:
                  )
   
         return query
+
+    def fit_gumbel(self, x, T, N_min=10):
+        """Function to get L-moments to estimate the parameters
+        of a gumbel distribution. This method uses the 
+        right-skewed Gumbel distribution. Method mirrors 
+        Hosking 1990.
+        -----------------------------------
+        Args:
+            x (pandas Series): Series containing the annual
+                grouped extreme values for a given 
+                station and a range of years.
+            T (int): Return period in years.
+            N_min (int): Minimum number of years available to estimate
+                Gumbel parameters.
+        Returns:
+            (xi, alpha, T) (tuple): estimated parameters of gumbel
+                distribution if N_min criteria met
+            NaN (numpy NaN object): if N_min criteria is not met 
+        """
+
+        N = x.shape[0]
+
+        # euler-mascheroni constant
+        euler = 0.5772156649
+        if N >= N_min:
+            paras = distr.gum.lmom_fit(x)
+            lmoments = distr.gum.lmom(nmom=2, **paras)
+
+            alpha = lmoments[1]/np.log(2)
+            xi = lmoments[0] - euler*alpha 
+
+            return xi, alpha, T
+        else:
+            return np.nan
+
+    def get_gumbel_design_value(self, xi, alpha, T):
+        """Function to get L-moments to estimate the parameters
+        of a gumbel distribution. This method uses the 
+        right-skewed Gumbel distribution. Method mirrors 
+        Hosking 1990.
+        -----------------------------------
+        Args:
+            xi (float): Estimated value of the location parameter
+                (first l-moment)
+            alpha (float): Estimated value of the scale parameter
+                (second l-moment).
+            T (int): Return period in years.
+        Returns:
+            est (float): design value using Gumbel parameters
+        """
+        prob = 1.0/T
+        gamma = (1-prob) + np.exp(-np.exp((xi/alpha)))
+        est = xi - alpha*np.log(-np.log(gamma))
+        return est
