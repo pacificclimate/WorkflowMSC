@@ -365,6 +365,7 @@ class WorkflowTools:
             query (sqlalchemy query): sqlalchemy query object
             containing hdd values   
         """
+
         # get heating degree days below 18 C, convert to celsius, take mean
         hdd = func.sum((18.0-Obs.datum*0.1)/self.yr_interval).label("hdd")
         query = (
@@ -472,8 +473,7 @@ class WorkflowTools:
 
     def query_rain_rate_one_day_1_50(self, session):
         """A query to get the maximum annual 24hr duration 
-        rainfall amounts. This method uses the rainfall_rate
-        variable which is a daily maximum.
+        rainfall amounts.
         -----------------------------------------
         Returns:
             query (sqlalchemy query): sqlalchemy query object
@@ -485,6 +485,7 @@ class WorkflowTools:
 
         query = (
                  session.query(rainfall_rate,
+                               History.elevation,
                                self.time_min,
                                self.time_max,
                                self.lat, 
@@ -499,6 +500,7 @@ class WorkflowTools:
                         .filter(and_(Variable.standard_name == 'rainfall_rate',
                                      Variable.name == '161'))
                         .group_by(func.extract("year", Obs.time), 
+                                  History.elevation,
                                   History.lat, 
                                   History.lon,
                                   History.station_id)
@@ -555,7 +557,12 @@ class WorkflowTools:
         Returns:
             est (float): design value using Gumbel parameters
         """
+        # return frequency, i.e. inverse of return period 
         prob = 1.0/T
-        gamma = (1-prob) + np.exp(-np.exp((xi/alpha)))
+
+        # simplify long expression
+        gamma = (1.0-prob) + np.exp(-np.exp((xi/alpha)))
+        
+        # final expression for design value
         est = xi - alpha*np.log(-np.log(gamma))
         return est
