@@ -505,5 +505,5 @@ class WorkflowTools:
                                   History.lon,
                                   History.station_id)
                  )
-  
+ 
         return query
