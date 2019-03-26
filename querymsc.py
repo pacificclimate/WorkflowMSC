@@ -11,6 +11,8 @@ import numpy as np
 import math
 import pandas as pd
 import pgpasslib
+import lmoments3 as lm
+from lmoments3 import distr
 
 from pycds import *
 
@@ -508,7 +510,22 @@ class WorkflowTools:
   
         return query
 
-    def fit_gumbel(self, x, N_min=10):
+class Gumbel:
+    """This class is meant to do all the fitting
+    of Gumbel distributions to extract design values.
+    
+    Attributes:
+        return_period (int): return period in years
+        min_fit (int): minimum number of years to consider
+            fitting Gumbel.
+    """
+
+    def __init__(self, return_period, min_fit=10):
+
+        self.return_period = return_period
+        self.min_fit = min_fit
+
+    def fit(self, x):
         """Function to get L-moments to estimate the parameters
         of a gumbel distribution. This method uses the 
         right-skewed Gumbel distribution. Method mirrors 
@@ -518,6 +535,7 @@ class WorkflowTools:
             x (pandas Series): Series containing the annual
                 grouped extreme values for a given 
                 station over a range of years.
+            T (int): return period in years
             N_min (int): Minimum number of years available to estimate
                 Gumbel parameters.
         Returns:
@@ -531,7 +549,7 @@ class WorkflowTools:
         # euler-mascheroni constant
         euler = 0.5772156649
 
-        if N >= N_min:
+        if N >= self.min_fit:
             # create fitted gumbel object to
             # distribution of extreme values
             paras = distr.gum.lmom_fit(x)
@@ -546,9 +564,9 @@ class WorkflowTools:
 
             return xi, alpha
         else:
-            return np.nan
+            return np.nan, np.nan
 
-    def get_gumbel_design_value(self, xi, alpha, T):
+    def get_design_value(self, xi, alpha):
         """Get the design value from explicit expression
         derived from a right-skewed Gumbel distribution.
         See methods.pdf for more details. Separate from
@@ -566,7 +584,7 @@ class WorkflowTools:
         """
 
         # return frequency, i.e. inverse of return period 
-        f_r = 1.0/T
+        f_r = 1.0/self.return_period
 
         # simplify long expression
         simp = (1.0-f_r) + np.exp(-np.exp((xi/alpha)))
@@ -575,3 +593,42 @@ class WorkflowTools:
         design_val = xi - alpha*np.log(-np.log(simp))
 
         return design_val
+
+    def get_fit_transform(self, x):
+        """Extract the design value.
+        -----------------------------
+        Args:  
+            x (pandas Series): Series containing the annual
+            grouped extreme values for a given 
+            station over a range of years.
+
+        Returns:
+            design value (float): the design value
+            as extracted by get_design_value at
+            the given return period.
+        """
+        xi, alpha = self.fit(x)
+        return self.get_design_value(xi, alpha)
+
+    def fit_transform(self, df, variable='rainfall_rate'):
+        """Take dataframe with data from variables 
+        needed for design value calculation, group into
+        stations based on their station_id, and apply
+        the gumbel fitting to get the design values.
+        ------------------------------------------
+        Args:
+            df (pandas DataFrame): Contains all observations
+                of variable of interest
+            variable (Str): Key for the variable of interest.
+                Default key is rainfall_rate
+        
+        Returns:
+            df_new (pandas DataFrame): Same as input dataframe
+                but with added column containing the design values
+                with suffix "_design_val"
+        """
+        df_new = df.join((df.groupby('station_id')[variable]
+                            .apply(self.get_fit_transform)), 
+                         on='station_id',
+                         rsuffix='_design_val')
+        return df_new
