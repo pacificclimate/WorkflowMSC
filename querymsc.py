@@ -507,3 +507,71 @@ class WorkflowTools:
                  )
   
         return query
+
+    def fit_gumbel(self, x, N_min=10):
+        """Function to get L-moments to estimate the parameters
+        of a gumbel distribution. This method uses the 
+        right-skewed Gumbel distribution. Method mirrors 
+        Hosking 1990.
+        -----------------------------------
+        Args:
+            x (pandas Series): Series containing the annual
+                grouped extreme values for a given 
+                station over a range of years.
+            N_min (int): Minimum number of years available to estimate
+                Gumbel parameters.
+        Returns:
+            (xi, alpha) (tuple): estimated parameters of gumbel
+                distribution if N_min criteria met
+            NaN (numpy NaN object): if N_min criteria is not met 
+        """
+
+        N = x.shape[0]
+
+        # euler-mascheroni constant
+        euler = 0.5772156649
+
+        if N >= N_min:
+            # create fitted gumbel object to
+            # distribution of extreme values
+            paras = distr.gum.lmom_fit(x)
+
+            # extract L-moments
+            lmoments = distr.gum.lmom(nmom=2, **paras)
+
+            # calculate estimators of gumbel
+            # parameters
+            alpha = lmoments[1]/np.log(2)
+            xi = lmoments[0] - euler*alpha 
+
+            return xi, alpha
+        else:
+            return np.nan
+
+    def get_gumbel_design_value(self, xi, alpha, T):
+        """Get the design value from explicit expression
+        derived from a right-skewed Gumbel distribution.
+        See methods.pdf for more details. Separate from
+        Gumbel fitting in case user defines custom
+        estimators. 
+        -----------------------------------
+        Args:
+            xi (float): Estimated value of the location parameter
+                (first l-moment)
+            alpha (float): Estimated value of the scale parameter
+                (second l-moment).
+            T (int): Return period in years.
+        Returns:
+            design_val (float): design value using Gumbel parameters
+        """
+
+        # return frequency, i.e. inverse of return period 
+        f_r = 1.0/T
+
+        # simplify long expression
+        simp = (1.0-f_r) + np.exp(-np.exp((xi/alpha)))
+
+        # final expression for design value
+        design_val = xi - alpha*np.log(-np.log(simp))
+
+        return design_val
