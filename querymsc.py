@@ -535,9 +535,6 @@ class Gumbel:
             x (pandas Series): Series containing the annual
                 grouped extreme values for a given 
                 station over a range of years.
-            T (int): return period in years
-            N_min (int): Minimum number of years available to estimate
-                Gumbel parameters.
         Returns:
             (xi, alpha) (tuple): estimated parameters of gumbel
                 distribution if N_min criteria met
@@ -578,7 +575,6 @@ class Gumbel:
                 (first l-moment)
             alpha (float): Estimated value of the scale parameter
                 (second l-moment).
-            T (int): Return period in years.
         Returns:
             design_val (float): design value using Gumbel parameters
         """
@@ -601,7 +597,7 @@ class Gumbel:
             x (pandas Series): Series containing the annual
             grouped extreme values for a given 
             station over a range of years.
-
+            
         Returns:
             design value (float): the design value
             as extracted by get_design_value at
