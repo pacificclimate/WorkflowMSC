@@ -38,7 +38,7 @@ class Gumbel:
         -----------------------------------
         Args:
             x (pandas Series): Numerical series of annual extremes
-                grouped by station.
+                a unique station.
         Returns:
             (xi, alpha) (tuple): estimated parameters of gumbel
                 distribution if N_min criteria met
@@ -91,6 +91,9 @@ class Gumbel:
         # simplify long expression
         simp = (1.0-f_r) + np.exp(-np.exp((xi/alpha)))
 
+        if simp < 0.0 or simp > 1.0:
+            return np.nan
+
         # final expression for design value
         design_val = xi - alpha*np.log(-np.log(simp))
 
@@ -101,7 +104,7 @@ class Gumbel:
         -----------------------------
         Args:
             x (pandas Series): Numerical series of annual extremes
-                grouped by station.
+                a unique station.
 
         Returns:
             design value (float): the design value
