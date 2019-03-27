@@ -1,3 +1,8 @@
+import numpy as np
+from lmoments3 import distr
+import pandas as pd
+from pandas.api.types import is_numeric_dtype
+
 class Gumbel:
     """This class is meant to do all the fitting
     of Gumbel distributions to extract design values.
@@ -32,15 +37,13 @@ class Gumbel:
         Hosking 1990.
         -----------------------------------
         Args:
-            x (pandas Series): Series containing the annual
-                grouped extreme values for a given 
-                station over a range of years.
+            x (pandas Series): Numerical series of annual extremes
+                grouped by station.
         Returns:
             (xi, alpha) (tuple): estimated parameters of gumbel
                 distribution if N_min criteria met
             NaN (numpy NaN object): if N_min criteria is not met 
         """
-
         N = x.shape[0]
 
         # euler-mascheroni constant
@@ -78,12 +81,6 @@ class Gumbel:
         Returns:
             design_val (float): design value using Gumbel parameters
         """
-        if isinstance(alpha, float) == False:
-            raise TypeError("alpha must be float.") 
-
-        if isinstance(xi, float) == False:
-            raise TypeError("xi must be float.") 
-
         if alpha <= 0.0:
             raise ValueError("alpha must be greater than 0.")
 
@@ -101,38 +98,42 @@ class Gumbel:
     def get_fit_transform(self, x):
         """Extract the design value.
         -----------------------------
-        Args:  
-            x (pandas Series): Series containing the annual
-            grouped extreme values for a given 
-            station over a range of years.
+        Args:
+            x (pandas Series): Numerical series of annual extremes
+                grouped by station.
 
         Returns:
             design value (float): the design value
-            as extracted by get_design_value at
-            the given return period.
+                as extracted by get_design_value at
+                the given return period.
         """
         xi, alpha = self.fit(x)
         return self.get_design_value(xi, alpha)
 
-    def fit_transform(self, df, variable='rainfall_rate'):
-        """Take dataframe with data from variables 
-        needed for design value calculation, group into
-        stations based on their station_id, and apply
-        the gumbel fitting to get the design values.
+    def fit_transform(self, df, station_variable = 'station_id', variable='rainfall_rate'):
+        """Creates a copy of input DataFrame with 
+        extra column containing derived design values.
         ------------------------------------------
         Args:
             df (pandas DataFrame): Contains all observations
                 of variable of interest
+            station_variable (Str): Key for the unique 
+                identifier for a station in the pandas 
+                DataFrame. Default key is 'station_id'
             variable (Str): Key for the variable of interest.
-                Default key is rainfall_rate
+                Default key is 'rainfall_rate'
         
         Returns:
             df_new (pandas DataFrame): Same as input dataframe
                 but with added column containing the design values
-                with suffix "_design_val"
+                with suffix "_dval"
         """
-        df_new = df.join((df.groupby('station_id')[variable]
+        if isinstance(df, pd.DataFrame) == False:
+            raise TypeError("df must be pandas DataFrame.")
+
+        # group stations and fit each station group independently
+        df_new = df.join((df.groupby(station_variable)[variable]
                             .apply(self.get_fit_transform)), 
-                         on='station_id',
-                         rsuffix='_design_val')
+                         on=station_variable,
+                         rsuffix='_dval')
         return df_new
