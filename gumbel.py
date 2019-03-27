@@ -44,6 +44,9 @@ class Gumbel:
                 distribution if N_min criteria met
             NaN (numpy NaN object): if N_min criteria is not met 
         """
+        
+        # number of years available from
+        # at a station
         N = x.shape[0]
 
         # euler-mascheroni constant
@@ -69,9 +72,7 @@ class Gumbel:
     def get_design_value(self, xi, alpha):
         """Get the design value from explicit expression
         derived from a right-skewed Gumbel distribution.
-        See methods.pdf for more details. Separate from
-        Gumbel fitting in case user defines custom
-        estimators. 
+        See methods.pdf for more details. 
         -----------------------------------
         Args:
             xi (float): Estimated value of the location parameter
@@ -131,7 +132,9 @@ class Gumbel:
         if isinstance(df, pd.DataFrame) == False:
             raise TypeError("df must be pandas DataFrame.")
 
-        # group stations and fit each station group independently
+        # Group stations and fits each station group independently.
+        # Assigns value of get_fit_transform() to each row
+        # of DataFrame for its related station group.
         df_new = df.join((df.groupby(station_variable)[variable]
                             .apply(self.get_fit_transform)), 
                          on=station_variable,
