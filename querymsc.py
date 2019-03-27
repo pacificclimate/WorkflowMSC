@@ -11,7 +11,6 @@ import numpy as np
 import math
 import pandas as pd
 import pgpasslib
-import lmoments3 as lm
 from lmoments3 import distr
 
 from pycds import *
@@ -544,7 +543,7 @@ class Gumbel:
         N = x.shape[0]
 
         # euler-mascheroni constant
-        euler = 0.5772156649
+        euler = np.euler_gamma
 
         if N >= self.min_fit:
             # create fitted gumbel object to
@@ -597,7 +596,7 @@ class Gumbel:
             x (pandas Series): Series containing the annual
             grouped extreme values for a given 
             station over a range of years.
-            
+
         Returns:
             design value (float): the design value
             as extracted by get_design_value at
