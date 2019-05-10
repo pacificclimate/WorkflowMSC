@@ -1,6 +1,7 @@
 from sqlalchemy.sql import func
-from sqlalchemy import and_, or_, case
+from sqlalchemy import and_, or_, case, distinct
 
+from calendar import monthrange
 from pycds import Obs, History, Variable
 
 from query_helpers import total_days, total_years, count, min_time, max_time, days_in_month, hours_in_month
@@ -24,35 +25,57 @@ def query_design_temp_percentile(start_time, end_time, session, quantile=0.01):
     percentile = (func.percentile_cont(quantile)
                  .within_group(Obs.datum.asc())
                  .label("air_temperature"))
-    days = days_in_month(start_time, end_time)
-    completeness = (count(Obs)/days).label("completeness")
 
+    days = monthrange(start_time.year, start_time.month)[1]
+    completeness = (func.count(Obs.datum)/float(days)).label("completeness")
     month = start_time.month
 
-    query = (
-             session.query(percentile,
-                           min_time(Obs),
-                           max_time(Obs),
-                           History.lat,
-                           History.lon,
-                           History.station_id,
-                           completeness)
-                    .select_from(Obs)
-                    .join(Variable, Obs.vars_id == Variable.id)
+    # This has the eligible years
+    full_cvg = (session.query(completeness,
+                              History.station_id.label('station_id'),
+                              func.extract("year", Obs.time).label('year')
+                              )
+                       .join(Variable, Obs.vars_id == Variable.id)
+                       .join(History, Obs.history_id == History.id)
+                       .filter(and_(Obs.time >= start_time,
+                                    Obs.time < end_time))
+                       .filter(func.extract("month", Obs.time) == month)
+                       .filter(Variable.name == '2')
+                       .filter(and_(Variable.standard_name == 'air_temperature',
+                                    Variable.cell_method == 'time: minimum'))
+                        #.filter(Obs.datum != 0.0)
+                       .having(completeness == 1.0)
+                       .group_by(func.extract("year", Obs.time),
+                                 History.station_id)
+                )
+
+    sub_full_cvg = full_cvg.subquery()
+
+    # this has the eligible stations
+    yr_cvg = (session.query(sub_full_cvg.columns.station_id.label("station_id"),
+                            func.count(sub_full_cvg.columns.station_id).label('count'))
+                     .having(func.count(sub_full_cvg.columns.station_id) >= 8)
+                     .group_by(sub_full_cvg.columns.station_id)
+              )
+
+    sub_yr_cvg = yr_cvg.subquery()
+
+    latest_hist_query = (session.query(History.sdate, History.edate, History.id, History.station_id, History.lat, History.lon)
+                                .group_by(History.id)
+                         )
+
+    # Take eligible stations from count_cvg, and eligible years from cvg to get the correct obs
+    query = (session.query(percentile,
+                           History.station_id
+                           )
                     .join(History, Obs.history_id == History.id)
-                    .filter(and_(Obs.time >= start_time,
-                                 Obs.time < end_time))
-                    .filter(func.extract("month", Obs.time) == month)
-                    .filter(Variable.name == '2')
-                    .filter(and_(Variable.standard_name == 'air_temperature',
-                                 Variable.cell_method == 'time: minimum'))
-                    .filter(Obs.datum != 0.0) # bad obs are sometimes 0.0
-                    .group_by(History.lat,
-                              History.lon,
-                              History.station_id)
+                    .join(sub_full_cvg, History.station_id == sub_full_cvg.columns.station_id)
+                    .join(sub_yr_cvg,  History.station_id == sub_yr_cvg.columns.station_id)
+                    .filter(sub_full_cvg.columns.year == func.extract('year', Obs.time))
+                    .group_by(History.station_id)
              )
 
-    return query
+    return latest_hist_query
 
 
 def query_design_temp_dry(start_time, end_time, session, quantile=0.025):
@@ -152,6 +175,7 @@ def query_design_temp_wet(start_time, end_time, session, quantile=0.025):
                    daily_complete)],
                    else_= hourly_complete).label('completeness')
             )
+    #completeness = hourly_complete.label('completeness')
 
     query = (
              session.query(percentile,
@@ -191,7 +215,7 @@ def hdd(start_time, end_time, session):
         containing hdd values
     """
     years = total_years(start_time, end_time)
-    completeness = count(Obs)/total_days(start_time, end_time)
+    completeness = (count(Obs)/total_days(start_time, end_time)).label('completeness')
     # get heating degree days below 18 C, convert to celsius, take mean
     hdd = func.sum((180.0-Obs.datum)/years).label("hdd")
     query = (
