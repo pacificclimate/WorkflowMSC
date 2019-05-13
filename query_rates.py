@@ -1,5 +1,6 @@
-from pycds import Obs, History, Variable
+from pycds import Obs, History, Variable, Station
 from sqlalchemy.sql import func
+from sqlalchemy.orm import aliased
 from sqlalchemy import and_, or_
 from query_helpers import total_days, total_years, count, min_time, max_time
 
@@ -29,10 +30,12 @@ def query_rain_rate_15(start_time, end_time, session):
                            History.lat,
                            History.lon,
                            History.station_id,
+                           Station.native_id,
                            completeness)
                     .select_from(Obs)
                     .join(Variable, Obs.vars_id == Variable.id)
                     .join(History, Obs.history_id == History.id)
+                    .join(Station, History.station_id == Station.id)
                     .filter(and_(Obs.time >= start_time,
                                  Obs.time < end_time))
                     .filter(Variable.standard_name == 'rainfall_rate')
@@ -41,6 +44,7 @@ def query_rain_rate_15(start_time, end_time, session):
                               History.lat,
                               History.lon,
                               History.station_id,
+                              Station.native_id,
                               )
              )
 
@@ -89,24 +93,53 @@ def rrall(start_time, end_time, session):
 
 def has_rain(start_time, end_time, session):
 
-    query = (
-             session.query(Obs.datum,
-                           Obs.time,
-                           History.lat,
-                           History.lon,
-                           History.station_id)
-                    .select_from(Obs)
-                    .join(Variable, Obs.vars_id == Variable.id)
-                    .join(History, Obs.history_id == History.id)
+    date = min_time(Obs)
+    max_val = func.max(Obs.datum)
+
+    q = (
+         session.query(max_val.label("rate"),
+                           date)
+                    .filter(Variable.name == '127')
+                    .group_by(func.extract('day', Obs.time))
+        ).subquery()
+
+    q_rain = (
+             session.query(max_val.label("total_rain"),
+                            date)
                     .filter(and_(Obs.time >= start_time,
                                  Obs.time < end_time))
                     .filter(or_(Variable.name == '48',
                                 Variable.name == '10'))
-                    .group_by(Obs,
-                              History.lat,
-                              History.lon,
-                              History.station_id,
-                              )
-             )
+                    .group_by(func.extract('day', Obs.time))
+        ).subquery()
 
-    return query
+    qq = (session.query(q.columns.rate, q_rain.columns.total_rain,
+                       q.columns.min_time, q_rain.columns.min_time, History.lat,
+                       History.lon,
+                       History.station_id)
+                        .select_from(Obs))
+
+    new_q = (qq.join(q_rain, q.columns.min_time==q_rain.columns.min_time)
+             .filter(q.columns.min_time==q_rain.columns.min_time)
+             .filter(q_rain.columns.total_rain > 1.0)
+             .limit(1000))
+
+    '''( session.query(s.columns.total_rain,
+                            p.columns.rate,
+                            s.columns.rain_time,
+                            p.columns.rate_time,
+                            History.lat,
+                            History.lon,
+                            History.station_id)
+                    .join(p, s.columns.rain_time==p.columns.rate_time)
+                    .join(History, Obs.history_id == History.id)
+                    .join(Variable, Obs.vars_id == Variable.id).limit(10000)
+            )'''
+
+    return new_q
+
+#join(Variable, Obs.vars_id == Variable.id).join(History, Obs.history_id == History.id).limit(10000)
+#outerjoin(s, Obs.time==s.columns.obs_time).limit(10000)
+#return newq.join(s, Obs.time==s.columns.obs_time).limit(10000)
+
+#    return query
