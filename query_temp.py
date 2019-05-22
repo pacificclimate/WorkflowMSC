@@ -1,5 +1,10 @@
 from sqlalchemy.sql import func
+from sqlalchemy.orm import aliased
 from sqlalchemy import and_, or_, case, distinct
+from sqlalchemy import (Table, Column, String, Integer,
+                        MetaData, select, func, join)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from calendar import monthrange
 from pycds import Obs, History, Variable
@@ -7,67 +12,70 @@ from pycds import Obs, History, Variable
 from query_helpers import total_days, total_years, count, min_time, max_time, days_in_month, hours_in_month
 
 
-def full_cvg(session,
-             start_time,
-             end_time,
-             completeness,
-             var_name,
-             cell_method,
-             standard_name):
+def full_cvg(
+    session, start_time,
+    end_time, completeness, net_var_name,
+    cell_method, standard_name
+    ):
+    #Session = sessionmaker(bind=engine)
+    #session = Session()
 
-    sub_full_cvg = (session.query(completeness,
-                                  History.station_id.label('station_id'),
-                                  func.extract('year', Obs.time).label('year'))
+    #conn = engine.connect()
+
+    query = (session.query(
+                            completeness,
+                            History.station_id.label('station_id'),
+                            func.extract('year', Obs.time).label('year')
+                            )
                            .join(Variable, Obs.vars_id == Variable.id)
                            .join(History, Obs.history_id == History.id)
                            .filter(and_(Obs.time >= start_time,
                                         Obs.time < end_time))
                            .filter(func.extract('month', Obs.time) == start_time.month)
-                           .filter(Variable.name == var_name)
+                           .filter(Variable.name == net_var_name)
                            .filter(and_(Variable.standard_name == standard_name,
                                         Variable.cell_method == cell_method))
                            .having(completeness == 1.0)
-                           .group_by(func.extract('year', Obs.time),
-                                     History.station_id)).subquery()
+                           .group_by(History.station_id.label('station_id'), func.extract('year', Obs.time).label('year'))
+                    ).cte()
 
-    return sub_full_cvg
+    #cte_full_cvg = (select([query.c.station_id, query.c.completeness, query.c.year]))
+    #statement = conn.execute(cte_full_cvg)#.group_by(query.c.station_id, query.c.completeness, query.c.year)
 
-def yr_cvg(session,
-           start_time,
-           end_time,
-           completeness,
-           var_name,
-           cell_method,
-           standard_name,
-           min_years):
+    #print(dir(statement))
 
-    sub_full_cvg = full_cvg(session, start_time, end_time, completeness, var_name, cell_method, standard_name)
+    return query
 
-    sub_yr_cvg = (session.query(sub_full_cvg.columns.station_id.label('station_id'),
-                                func.count(sub_full_cvg.columns.station_id).label('count'))
-                         .having(func.count(sub_full_cvg.columns.station_id) >= min_years)
-                         .group_by(sub_full_cvg.columns.station_id)).subquery()
+def combine_cvg(
+    session, start_time, end_time,
+    completeness, net_var_name, cell_method,
+    standard_name, min_years
+    ):
+
+    cte_full_cvg = full_cvg(session, start_time, end_time, completeness, var_name, cell_method, standard_name)
+
+    sub_yr_cvg = (select([cte_full_cvg.columns.station_id,
+                          func.count(sub_full_cvg.columns.station_id).label('count')
+                          ])
+                         .where(select([func.count(cte_full_cvg.c.station_id)]) >= min_years)
+                         .group_by(cte_full_cvg.columns.station_id)
+                  )
 
     return sub_yr_cvg
 
 def hist(session):
 
-    sub_hist = (session.query(History.lat, History.lon, History.station_id)
-                       .group_by(History.lat, History.lon, History.station_id)
-                       .subquery())
+    cte_hist = (session.query(History.lat, History.lon, History.station_id)
+                       .group_by(History.lat, History.lon, History.station_id).cte())
 
-    return sub_hist
+    return cte_hist
 
-def temp_quantile(session,
-                  start_time,
-                  end_time,
-                  method='lower',
-                  cell_method='time: minimum',
-                  bulb='dry',
-                  var_name='2',
-                  standard_name='air_temperature',
-                  quantile=0.01,
-                  min_years=8):
+def temp_quantile(
+    engine, start_time, end_time,
+    method='lower', cell_method='time: minimum',
+    bulb='dry', net_var_name='2', standard_name='air_temperature',
+    quantile=0.01, min_years=8
+    ):
 
     '''A query to get the percentile of minimum daily air_temperatures
     at a station in a given time frame. Daily minimum air
@@ -84,6 +92,11 @@ def temp_quantile(session,
             for design value
     '''
 
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    conn = engine.connect()
+
+
     # get the number of days in the month of the start_time
     days = monthrange(start_time.year, start_time.month)[1]
 
@@ -99,9 +112,8 @@ def temp_quantile(session,
     else:
         raise ValueError('Please enter a valid method type. Must be \'lower\' or \'upper\', ')
 
-    if bulb is 'wet':
-        completeness = (
-                        case([(func.count(Obs.datum) <= days,
+    if standard_name is 'wet_bulb_temperature':
+        completeness = (case([(func.count(Obs.datum) <= days,
                                daily_complete)],
                         else_= hourly_complete).label('completeness')
                         )
@@ -114,44 +126,102 @@ def temp_quantile(session,
                       .label("air_temperature"))
 
     # This has the eligible years
-    sub_full_cvg = full_cvg(session,
-                            start_time,
-                            end_time,
+
+    cte_full_cvg = (session.query(
                             completeness,
-                            var_name,
-                            cell_method,
-                            standard_name)
+                            History.station_id.label('station_id'),
+                            func.extract('year', Obs.time).label('year')
+                            )
+                           .join(Variable, Obs.vars_id == Variable.id)
+                           .join(History, Obs.history_id == History.id)
+                           .filter(and_(Obs.time >= start_time,
+                                        Obs.time < end_time))
+                           .filter(func.extract('month', Obs.time) == start_time.month)
+                           .filter(Variable.name == net_var_name)
+                           .filter(and_(Variable.standard_name == standard_name,
+                                        Variable.cell_method == cell_method))
+                           .having(completeness == 1.0)
+                           .group_by(History.station_id.label('station_id'), func.extract('year', Obs.time).label('year'))
+                           .cte('complete'))
+
+    cte_yr_cvg = (session.query(cte_full_cvg.c.station_id,
+                                func.count(cte_full_cvg.c.station_id)
+                                )
+                        .having(func.count(cte_full_cvg.c.station_id) >= 8)
+                        .group_by(cte_full_cvg.c.station_id)
+                        .cte('year'))
+
+    query = (session.query(percentile.label('quantile'),
+                          cte_yr_cvg.c.station_id,
+                          History.lat,
+                          History.lon)
+                    .select_from(Obs)
+                    .join(History, Obs.history_id == History.id)
+                    #.join(hist, Obs.history_id == hist.c.id)
+                    .join(cte_yr_cvg, History.station_id == cte_yr_cvg.c.station_id)
+                    #.join(cte_full_cvg, cte_yr_cvg.c.station_id == cte_full_cvg.c.station_id)
+                    .join(cte_full_cvg, History.station_id == cte_full_cvg.c.station_id)
+                    #.join(cte_full_cvg, func.extract('year', Obs.time) == cte_full_cvg.c.year)
+                    #.join(cte_yr_cvg, hist.c.station_id == cte_full_cvg.c.station_id)
+                    #.join(cte_yr_cvg, hist.c.station_id == cte_yr_cvg.c.station_id)
+                    #.join(Obs, hist.c.id == Obs.history_id)
+                    .filter(cte_full_cvg.c.year == func.extract('year', Obs.time))
+                    .group_by(cte_yr_cvg.c.station_id,
+                              History.lat,
+                              History.lon)
+            )
+
+
+    '''cte_yr_cvg = (select([cte_full_cvg.c.station_id,
+                          func.count(cte_full_cvg.c.station_id).label('count')])
+                         .having(func.count(cte_full_cvg.c.station_id) >= 8)
+                         .group_by(cte_full_cvg.c.station_id, cte_full_cvg.c.year)
+                         .all()
+                 )
+    '''
+    #cte_full_cvg = full_cvg(
+    #                session, start_time, end_time,
+    #                completeness, net_var_name,
+    #                cell_method, standard_name
+    #                )
 
     # This has the eligible stations
-    sub_yr_cvg = yr_cvg(session,
-                        start_time,
-                        end_time,
-                        completeness,
-                        var_name,
-                        cell_method,
-                        standard_name,
-                        min_years)
+    #sub_yr_cvg = yr_cvg(
+    #            session, start_time, end_time,
+    #            completeness, net_var_name,
+    #            cell_method, standard_name, min_years
+    #            )
 
-    sub_hist = hist(session)
+    #sub_hist = hist(session)
+
+    #hist = (session.query(History.lat, History.lon, History.station_id)
+    #                   .group_by(History.lat, History.lon, History.station_id).cte())
 
     # Take eligible stations from yr_cvg, and eligible years from full_cvg to get the correct obs
-    query = (session.query(
-                            percentile.label('quantile'),
-                            sub_hist.columns.station_id,
-                            sub_hist.columns.lat,
-                            sub_hist.columns.lon
-                           )
-                    .join(History, Obs.history_id == History.id)
-                    .join(sub_full_cvg, History.station_id == sub_full_cvg.columns.station_id)
-                    .join(sub_yr_cvg,  History.station_id == sub_yr_cvg.columns.station_id)
-                    .join(sub_hist, History.station_id == sub_hist.columns.station_id)
-                    .filter(sub_full_cvg.columns.year == func.extract('year', Obs.time))
-                    .group_by(sub_hist.columns.station_id,
-                              sub_hist.columns.lat,
-                              sub_hist.columns.lon)
-             )
+    #query = (select([percentile, hist.c.station_id, hist.c.lat, hist.c.lon])
+    #                     .where(hist.c.station_id.in_(select([cte_yr_cvg.c.station_id])))
+    #                     .group_by(hist.c.station_id, hist.c.lat, hist.c.lon)
+    #        )
+    '''              )
+    query = (select([
+                    percentile.label('quantile'),
+                    sub_hist.c.station_id,
+                    sub_hist.c.lat,
+                    sub_hist.c.lon
+                    ])
+                    .where(cte_full_cvg.c.station_id.in_(select([])))
+                    .where()
+                    #.join(History, Obs.history_id == History.id)
+                    #.join(sub_full_cvg, History.station_id == sub_full_cvg.c.station_id)
+                    #.join(sub_yr_cvg,  History.station_id == sub_yr_cvg.c.station_id)
+                    #.join(sub_hist, History.station_id == sub_hist.c.station_id)
+                    #.filter(sub_full_cvg.c.year == func.extract('year', Obs.time))
+                    #.group_by(sub_hist.c.station_id,
+                    #          sub_hist.c.lat,
+                    #          sub_hist.c.lon)
+            )'''
 
-    return query
+    return query #conn.execute(cte_yr_cvg)
 
 def query_design_temp_wet(start_time, end_time, session, quantile=0.025):
     '''A query to get the percentile of maximum daily
@@ -175,7 +245,6 @@ def query_design_temp_wet(start_time, end_time, session, quantile=0.025):
 
     # get the number of days in the month of the start_time
     days = monthrange(start_time.year, start_time.month)[1]
-
     month = start_time.month
 
     # completeness for daily freq
@@ -184,12 +253,10 @@ def query_design_temp_wet(start_time, end_time, session, quantile=0.025):
     hourly_complete = (count(Obs)/hours)
 
     # calculate completeness between expected observations and actual obs
-    completeness = (
-                    case([(func.count(Obs.datum) <= days,
+    completeness = (case([(func.count(Obs.datum) <= days,
                            daily_complete)],
                         else_= hourly_complete).label('completeness')
                     )
-
 
     # This has the eligible years
     full_cvg = (session.query(completeness,
@@ -201,50 +268,43 @@ def query_design_temp_wet(start_time, end_time, session, quantile=0.025):
                        .filter(and_(Obs.time >= start_time,
                                     Obs.time < end_time))
                        .filter(func.extract('month', Obs.time) == month)
-                       .filter(Variable.name == var_name)
+                       .filter(Variable.name == net_var_name)
                        .filter(and_(Variable.standard_name == 'air_temperature',
                                     Variable.cell_method == min_max))
                        .having(completeness == 1.0)
                        .group_by(func.extract('year', Obs.time),
                                  History.station_id)
-                )
-
-    sub_full_cvg = full_cvg.subquery()
+                ).cte('full_cvg')
 
     # This has the eligible stations
-    yr_cvg = (session.query(
-                            sub_full_cvg.columns.station_id.label('station_id'),
-                            func.count(sub_full_cvg.columns.station_id).label('count')
+    yr_cvg = (session.query(full_cvg.c.station_id.label('station_id'),
+                            func.count(full_cvg.c.station_id).label('count')
                             )
-                     .having(func.count(sub_full_cvg.columns.station_id) >= 8)
-                     .group_by(sub_full_cvg.columns.station_id)
-              )
+                     .having(func.count(full_cvg.c.station_id) >= 8)
+                     .group_by(full_cvg.c.station_id)
+              ).cte('yr_cvg')
 
-    sub_yr_cvg = yr_cvg.subquery()
-
-    sub_hist = (
-                session.query(History.lat, History.lon, History.station_id)
+    sub_hist = (session.query(History.lat, History.lon, History.station_id)
                        .group_by(History.lat, History.lon, History.station_id)
                        .subquery()
-                )
+                ).cte('sub_hist')
 
     # Take eligible stations from yr_cvg, and eligible years from full_cvg to get the correct obs
     query = (session.query(
-                            percentile.label('quantile'),
-                            sub_hist.columns.station_id,
-                            sub_hist.columns.lat,
-                            sub_hist.columns.lon
-                           )
+                    percentile.label('quantile'),
+                    sub_hist.c.station_id,
+                    sub_hist.c.lat,
+                    sub_hist.c.lon
+                    )
                     .join(History, Obs.history_id == History.id)
-                    .join(sub_full_cvg, History.station_id == sub_full_cvg.columns.station_id)
-                    .join(sub_yr_cvg,  History.station_id == sub_yr_cvg.columns.station_id)
-                    .join(sub_hist, History.station_id == sub_hist.columns.station_id)
-                    .filter(sub_full_cvg.columns.year == func.extract('year', Obs.time))
-                    .group_by(sub_hist.columns.station_id,
-                              sub_hist.columns.lat,
-                              sub_hist.columns.lon)
+                    .join(sub_full_cvg, History.station_id == sub_full_cvg.c.station_id)
+                    .join(sub_yr_cvg,  History.station_id == sub_yr_cvg.c.station_id)
+                    .join(sub_hist, History.station_id == sub_hist.c.station_id)
+                    .filter(sub_full_cvg.c.year == func.extract('year', Obs.time))
+                    .group_by(sub_hist.c.station_id,
+                              sub_hist.c.lat,
+                              sub_hist.c.lon)
              )
-
 
     percentile = (func.percentile_cont(quantile)
                  .within_group(Obs.datum.desc())
