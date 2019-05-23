@@ -157,71 +157,15 @@ def temp_quantile(
                           History.lon)
                     .select_from(Obs)
                     .join(History, Obs.history_id == History.id)
-                    #.join(hist, Obs.history_id == hist.c.id)
                     .join(cte_yr_cvg, History.station_id == cte_yr_cvg.c.station_id)
-                    #.join(cte_full_cvg, cte_yr_cvg.c.station_id == cte_full_cvg.c.station_id)
                     .join(cte_full_cvg, History.station_id == cte_full_cvg.c.station_id)
-                    #.join(cte_full_cvg, func.extract('year', Obs.time) == cte_full_cvg.c.year)
-                    #.join(cte_yr_cvg, hist.c.station_id == cte_full_cvg.c.station_id)
-                    #.join(cte_yr_cvg, hist.c.station_id == cte_yr_cvg.c.station_id)
-                    #.join(Obs, hist.c.id == Obs.history_id)
                     .filter(cte_full_cvg.c.year == func.extract('year', Obs.time))
                     .group_by(cte_yr_cvg.c.station_id,
                               History.lat,
                               History.lon)
             )
 
-
-    '''cte_yr_cvg = (select([cte_full_cvg.c.station_id,
-                          func.count(cte_full_cvg.c.station_id).label('count')])
-                         .having(func.count(cte_full_cvg.c.station_id) >= 8)
-                         .group_by(cte_full_cvg.c.station_id, cte_full_cvg.c.year)
-                         .all()
-                 )
-    '''
-    #cte_full_cvg = full_cvg(
-    #                session, start_time, end_time,
-    #                completeness, net_var_name,
-    #                cell_method, standard_name
-    #                )
-
-    # This has the eligible stations
-    #sub_yr_cvg = yr_cvg(
-    #            session, start_time, end_time,
-    #            completeness, net_var_name,
-    #            cell_method, standard_name, min_years
-    #            )
-
-    #sub_hist = hist(session)
-
-    #hist = (session.query(History.lat, History.lon, History.station_id)
-    #                   .group_by(History.lat, History.lon, History.station_id).cte())
-
-    # Take eligible stations from yr_cvg, and eligible years from full_cvg to get the correct obs
-    #query = (select([percentile, hist.c.station_id, hist.c.lat, hist.c.lon])
-    #                     .where(hist.c.station_id.in_(select([cte_yr_cvg.c.station_id])))
-    #                     .group_by(hist.c.station_id, hist.c.lat, hist.c.lon)
-    #        )
-    '''              )
-    query = (select([
-                    percentile.label('quantile'),
-                    sub_hist.c.station_id,
-                    sub_hist.c.lat,
-                    sub_hist.c.lon
-                    ])
-                    .where(cte_full_cvg.c.station_id.in_(select([])))
-                    .where()
-                    #.join(History, Obs.history_id == History.id)
-                    #.join(sub_full_cvg, History.station_id == sub_full_cvg.c.station_id)
-                    #.join(sub_yr_cvg,  History.station_id == sub_yr_cvg.c.station_id)
-                    #.join(sub_hist, History.station_id == sub_hist.c.station_id)
-                    #.filter(sub_full_cvg.c.year == func.extract('year', Obs.time))
-                    #.group_by(sub_hist.c.station_id,
-                    #          sub_hist.c.lat,
-                    #          sub_hist.c.lon)
-            )'''
-
-    return query #conn.execute(cte_yr_cvg)
+    return query
 
 def query_design_temp_wet(start_time, end_time, session, quantile=0.025):
     '''A query to get the percentile of maximum daily
