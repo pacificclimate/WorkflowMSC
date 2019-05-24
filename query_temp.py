@@ -43,12 +43,12 @@ def temp_quantile(
     # calculate completeness between expected observations and actual obs
     completeness = (func.count(Obs.datum)/float(days)).label('completeness')
 
-    if method not in order_dict.keys():
-        raise ValueError('Please enter a valid method type. Must be \'lower\' or \'upper\', ')
-
     # arrange data depending on upper or lower percentile
     order_dict = {'lower': Obs.datum.asc(),
                   'upper': Obs.datum.desc()}
+
+    if method not in order_dict.keys():
+        raise ValueError('Please enter a valid method type. Must be \'lower\' or \'upper\', ')
 
     order = order_dict[method]
 
