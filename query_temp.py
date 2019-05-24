@@ -18,7 +18,7 @@ def temp_quantile(
     quantile=0.01, min_years=8
     ):
 
-    '''A query to get the percentile of minimum daily air_temperatures
+    '''A query to get the percentile of daily temperatures
     at a station in a given time frame. Daily air
     temperatures are used. Eligible data is used if a station
     has min_years or more fully complete months of data.
