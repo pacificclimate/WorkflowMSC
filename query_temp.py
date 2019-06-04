@@ -18,23 +18,31 @@ def temp_quantile(
     quantile=0.01, min_years=8
     ):
 
-    '''A query to get the percentile of daily temperatures
-    at a station in a given time frame. Daily air
-    temperatures are used. Eligible data is used if a station
-    has min_years or more fully complete months of data.
+    '''A funcion that returns a query of daily temperatures quantiles
+    at a station for a given month containing eligible data.
+    Eligible means a station has min_years or more fully complete
+    years of data for that month. Variable names follow PyCDS
+    meteorological naming conventions found here
+    https://data.pacificclimate.org/portal/docs/pycds.html
     -----------------------------------------
     Args:
         session (sqlalchemy Session): session constructed using
-            connection string and engine
-        method (str): calculate the upper or lower percentile
-        cell_method (str): type of cell method
-        net_var_name (str): EC variable standard id of variable
-        standard_name (ste): EC standard name of variable
-        quantile (float): desire percentile in fraction
-        min_years (int): minimum years with complete record to use.
+            connection string and engine.
+        method (str): instructions to calculate the upper or
+            lower percentile of the distribution.
+        cell_method (str): pycds parameter describing
+            variable acquisition.
+        net_var_name (str): network unique variable name for the
+            meterological service of canada's database.
+        standard_name (str): plain language non unique standard name
+            of variable.
+        quantile (float): desired percentile level to
+            calculate from observations.
+        min_years (int): minimum years with fully complete
+            record to use in calculations.
     Returns:
         query (sqlalchemy query): sqlalchemy query object
-            for design value
+            for design value.
     '''
 
     # get the number of days in the month of the start_time
@@ -57,51 +65,64 @@ def temp_quantile(
                       .within_group(order)
                       .label("air_temperature"))
 
-    # This query has eligible stations with fully complete
-    # record over month of interest
-    cte_full_cvg = (session.query(
-                            completeness,
-                            History.station_id.label('station_id'),
-                            func.extract('year', Obs.time).label('year')
-                            )
-                           .join(Variable, Obs.vars_id == Variable.id)
-                           .join(History, Obs.history_id == History.id)
-                           .filter(and_(Obs.time >= start_time,
-                                        Obs.time < end_time))
-                           .filter(func.extract('month', Obs.time) == start_time.month)
-                           .filter(Variable.name == net_var_name)
-                           .filter(and_(Variable.standard_name == standard_name,
-                                        Variable.cell_method == cell_method))
-                           .having(completeness == 1.0)
-                           .group_by(History.station_id.label('station_id'), func.extract('year', Obs.time).label('year'))
-                           .cte('complete'))
+    # This query returns rows containing the station_id and year
+    # where there is a fully complete record over the month of interest,
+    # as specified by start_time.month. Completeness is defined
+    # in calculation.
 
-    # This query has eligible stations with min_years or more fully complete
+    cte_full_cvg = (
+        session.query(
+            History.station_id.label('station_id'),
+            func.extract('year', Obs.time).label('year')
+        )
+        .join(Variable, Obs.vars_id == Variable.id)
+        .join(History, Obs.history_id == History.id)
+        .filter(and_(Obs.time >= start_time, Obs.time < end_time))
+        .filter(func.extract('month', Obs.time) == start_time.month)
+        .filter(Variable.name == net_var_name)
+        .filter(and_(Variable.standard_name == standard_name,
+            Variable.cell_method == cell_method))
+        .having(completeness == 1.0)
+        .group_by(
+            History.station_id.label('station_id'),
+                func.extract('year', Obs.time).label('year')
+        )
+        .cte('complete')
+    )
+
+    # This query returns rows containing id's of eligible stations
+    # (staisfying 8-year rule) with  with min_years or more fully complete
     # station records
-    cte_yr_cvg = (session.query(cte_full_cvg.c.station_id,
-                                func.count(cte_full_cvg.c.station_id)
-                                )
-                        .having(func.count(cte_full_cvg.c.station_id) >= min_years)
-                        .group_by(cte_full_cvg.c.station_id)
-                        .cte('year'))
+    cte_yr_cvg = (
+        session.query(
+            cte_full_cvg.c.station_id
+        )
+        .having(func.count(cte_full_cvg.c.station_id) >= min_years)
+        .group_by(cte_full_cvg.c.station_id)
+        .cte('year')
+    )
 
-    # This query uses eligible stations years from cte_full_cvg,
+    # This query uses eligible station years from cte_full_cvg,
     # and eligible stations from cte_yr_cvg, and pools the observations
     # meeting both those criteria to calculate a percentile
-    query = (session.query(percentile.label('quantile'),
-                          cte_yr_cvg.c.station_id,
-                          History.lat,
-                          History.lon)
-                    .select_from(Obs)
-                    .join(History, Obs.history_id == History.id)
-                    .join(cte_yr_cvg, History.station_id == cte_yr_cvg.c.station_id)
-                    .join(cte_full_cvg, History.station_id == cte_full_cvg.c.station_id)
-                    .filter(cte_full_cvg.c.year == func.extract('year', Obs.time))
-                    .filter()
-                    .group_by(cte_yr_cvg.c.station_id,
-                              History.lat,
-                              History.lon)
-            )
+    query = (
+        session.query(
+            percentile.label('quantile'),
+            cte_yr_cvg.c.station_id,
+            History.lat,
+            History.lon
+        )
+        .select_from(Obs)
+        .join(History, Obs.history_id == History.id)
+        .join(cte_yr_cvg, History.station_id == cte_yr_cvg.c.station_id)
+        .join(cte_full_cvg, History.station_id == cte_full_cvg.c.station_id)
+        .filter(cte_full_cvg.c.year == func.extract('year', Obs.time))
+        .group_by(
+            cte_yr_cvg.c.station_id,
+            History.lat,
+            History.lon
+        )
+    )
 
     return query
 
