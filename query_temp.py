@@ -29,7 +29,8 @@ def temp_quantile(
         session (sqlalchemy Session): session constructed using
             connection string and engine.
         method (str): instructions to calculate the upper or
-            lower percentile of the distribution.
+            lower percentile of the distribution which must be
+            `upper` or `lower`.
         cell_method (str): parameter describing
             variable acquisition method.
         net_var_name (str): network unique variable name for the
