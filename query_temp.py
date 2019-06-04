@@ -30,8 +30,8 @@ def temp_quantile(
             connection string and engine.
         method (str): instructions to calculate the upper or
             lower percentile of the distribution.
-        cell_method (str): pycds parameter describing
-            variable acquisition.
+        cell_method (str): parameter describing
+            variable acquisition method.
         net_var_name (str): network unique variable name for the
             meterological service of canada's database.
         standard_name (str): plain language non unique standard name
