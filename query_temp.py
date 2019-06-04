@@ -21,7 +21,7 @@ def temp_quantile(
     '''A funcion that returns a query of daily temperatures quantiles
     at a station for a given month containing eligible data.
     Eligible means a station has min_years or more fully complete
-    years of data for that month. Variable names follow PyCDS
+    years of data for that month. Parameter names follow PyCDS
     meteorological naming conventions found here
     https://data.pacificclimate.org/portal/docs/pycds.html
     -----------------------------------------
