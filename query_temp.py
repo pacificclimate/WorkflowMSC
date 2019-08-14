@@ -18,7 +18,7 @@ def query_design_temp_percentile(start_time, end_time, session, quantile=0.01):
             the desired percentile, default is 1, or January.
     Returns:
         query (sqlalchemy query): sqlalchemy query object
-            for design value
+            for design values
     """
 
     percentile = (func.percentile_cont(quantile)
@@ -28,7 +28,6 @@ def query_design_temp_percentile(start_time, end_time, session, quantile=0.01):
     completeness = (count(Obs)/days).label("completeness")
 
     month = start_time.month
-
     query = (
              session.query(percentile,
                            min_time(Obs),
@@ -36,6 +35,8 @@ def query_design_temp_percentile(start_time, end_time, session, quantile=0.01):
                            History.lat,
                            History.lon,
                            History.station_id,
+                           Variable.name,
+                           Variable.standard_name,
                            completeness)
                     .select_from(Obs)
                     .join(Variable, Obs.vars_id == Variable.id)
@@ -43,13 +44,77 @@ def query_design_temp_percentile(start_time, end_time, session, quantile=0.01):
                     .filter(and_(Obs.time >= start_time,
                                  Obs.time < end_time))
                     .filter(func.extract("month", Obs.time) == month)
-                    .filter(Variable.name == '2')
-                    .filter(and_(Variable.standard_name == 'air_temperature',
-                                 Variable.cell_method == 'time: minimum'))
-                    .filter(Obs.datum != 0.0) # bad obs are sometimes 0.0
-                    .group_by(History.lat,
-                              History.lon,
-                              History.station_id)
+                    #.filter(Variable.name == '2')
+                    .filter(Variable.standard_name == 'air_temperature')
+                    .filter(Variable.standard_name == 'soil_temperature')
+                    .filter(Variable.standard_name == 'surface_air_pressure')
+                    .filter(Variable.standard_name == 'wet_bulb_temperature')
+                    .filter(Variable.standard_name == 'relative_humidity')
+                    #.filter(Obs.datum != 0.0) # bad obs are sometimes 0.0
+                    .group_by(
+                            History.lat,
+                            History.lon,
+                            History.station_id,
+                            Variable.name,
+                            Variable.standard_name
+                    )
+             )
+
+    return query
+
+def query_all_temp(start_time, end_time, session):
+    """A query to get the percentile of minimum daily air_temperatures
+    at a station in a given time frame. Daily minimum air
+    temperatures are used.
+    -----------------------------------------
+    Args:
+        session (sqlalchemy Session): session constructed using
+            connection string and engine
+        percentile (float): desire percentile in fraction
+        month (datetime): desired month in which to calculate
+            the desired percentile, default is 1, or January.
+    Returns:
+        query (sqlalchemy query): sqlalchemy query object
+            for design values
+    """
+
+    days = days_in_month(start_time, end_time)
+    percentile = (func.percentile_cont(.10)
+                 .within_group(Obs.datum.asc())
+                 .label("air_temperature"))
+    completeness = (count(Obs)/days).label("completeness")
+
+    month = start_time.month
+    query = (
+             session.query( percentile,
+                            completeness,
+                            func.min(Obs.datum),
+                            func.max(Obs.datum),
+                            func.min(Obs.time),
+                            func.max(Obs.time),
+                            History.lat,
+                            History.lon,
+                            History.station_id,
+                            Variable.name,
+                        )
+                    .select_from(Obs)
+                    .join(Variable, Obs.vars_id == Variable.id)
+                    .join(History, Obs.history_id == History.id)
+                    .filter(and_(Obs.time >= start_time,
+                                 Obs.time < end_time))
+                    .filter(func.extract("month", Obs.time) == month)
+                    .filter((Variable.name == '1') |
+                            (Variable.name == '2') |
+                            (Variable.name == '3')
+                            )
+                    .filter((Variable.standard_name == 'air_temperature'))
+                    #.filter(Obs.datum != 0.0) # bad obs are sometimes 0.0
+                    .group_by(
+                            History.lat,
+                            History.lon,
+                            History.station_id,
+                            Variable.name,
+                            Variable.standard_name,)
              )
 
     return query
@@ -216,5 +281,22 @@ def hdd(start_time, end_time, session):
                               History.lon,
                               History.station_id)
              )
+
+    return query
+
+def simple_air_temp(session, station_id):
+
+    query = (
+             session.query(Obs.datum,
+                           History.lat,
+                           History.lon,
+                           History.station_id,
+                    )
+                    .select_from(Obs)
+                    .join(Variable, Obs.vars_id == Variable.id)
+                    .join(History, Obs.history_id == History.id)
+                    .filter(History.station_id == station_id)
+                    .filter(Variable.standard_name == 'air_temperature')
+    )
 
     return query
